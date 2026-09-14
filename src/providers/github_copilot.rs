@@ -13,27 +13,22 @@ use crate::{
 };
 
 const ENDPOINT: &str = "https://api.github.com/copilot_internal/user";
+const ENTERPRISE_URL: &str = "enterprise_url";
 
+#[derive(Default)]
 pub struct GitHubCopilotProvider {
-    endpoint: String,
-}
-
-impl Default for GitHubCopilotProvider {
-    fn default() -> Self {
-        Self {
-            endpoint: ENDPOINT.into(),
-        }
-    }
+    endpoint_override: Option<String>,
 }
 
 impl GitHubCopilotProvider {
     async fn fetch(
         &self,
         http: &reqwest::Client,
+        endpoint: &str,
         token: &str,
     ) -> Result<UsageReport, TrackerError> {
         let response = http
-            .get(&self.endpoint)
+            .get(endpoint)
             .header(header::AUTHORIZATION, format!("token {token}"))
             .header(header::ACCEPT, "application/json")
             .header("Editor-Version", "vscode/1.96.2")
@@ -58,7 +53,16 @@ impl GitHubCopilotProvider {
 
     #[cfg(test)]
     fn test_endpoint(endpoint: String) -> Self {
-        Self { endpoint }
+        Self {
+            endpoint_override: Some(endpoint),
+        }
+    }
+
+    fn endpoint(&self, enterprise_url: Option<&str>) -> Result<String, TrackerError> {
+        if let Some(endpoint) = &self.endpoint_override {
+            return Ok(endpoint.clone());
+        }
+        enterprise_url.map_or_else(|| Ok(ENDPOINT.into()), enterprise_endpoint)
     }
 }
 
@@ -68,16 +72,27 @@ impl TrackerProvider for GitHubCopilotProvider {
         ProviderDescriptor {
             id: ProviderId::from_str("github-copilot").expect("static provider ID is valid"),
             name: "GitHub Copilot".into(),
-            description: "Reports Copilot request quota for the account represented by a supplied GitHub token.".into(),
+            description: "Reports Copilot request quota for the account represented by a supplied GitHub token, including accounts hosted on GitHub Enterprise.".into(),
             setup: SetupSchema {
-                fields: vec![SetupField {
-                    key: "token".into(),
-                    label: "GitHub token".into(),
-                    description: "A GitHub token authorized for the Copilot usage endpoint.".into(),
-                    kind: SetupFieldKind::Secret,
-                    required: true,
-                    allowed_values: None,
-                }],
+                fields: vec![
+                    SetupField {
+                        key: "token".into(),
+                        label: "GitHub token".into(),
+                        description: "A GitHub token authorized for the Copilot usage endpoint."
+                            .into(),
+                        kind: SetupFieldKind::Secret,
+                        required: true,
+                        allowed_values: None,
+                    },
+                    SetupField {
+                        key: ENTERPRISE_URL.into(),
+                        label: "GitHub Enterprise URL".into(),
+                        description: "The GitHub Enterprise account URL, for example https://octocorp.ghe.com. Omit for github.com.".into(),
+                        kind: SetupFieldKind::String,
+                        required: false,
+                        allowed_values: None,
+                    },
+                ],
             },
             metrics: vec![
                 MetricDescriptor {
@@ -107,11 +122,23 @@ impl TrackerProvider for GitHubCopilotProvider {
             .remove("token")
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
             .ok_or_else(|| TrackerError::invalid("token must be a string"))?;
-        self.fetch(&ctx.http, &token).await?;
+        let enterprise_url = input
+            .remove(ENTERPRISE_URL)
+            .and_then(|value| value.as_str().map(ToOwned::to_owned));
+        let enterprise_url = enterprise_url
+            .as_deref()
+            .map(normalize_enterprise_url)
+            .transpose()?;
+        let endpoint = self.endpoint(enterprise_url.as_deref())?;
+        self.fetch(&ctx.http, &endpoint, &token).await?;
+        let mut public_settings = Map::new();
+        if let Some(enterprise_url) = enterprise_url {
+            public_settings.insert(ENTERPRISE_URL.into(), Value::String(enterprise_url));
+        }
         let mut secrets = SecretMap::new();
         secrets.insert("token".into(), Secret::new(token));
         Ok(PreparedSetup {
-            public_settings: Map::new(),
+            public_settings,
             secrets,
         })
     }
@@ -120,8 +147,52 @@ impl TrackerProvider for GitHubCopilotProvider {
         let token = ctx.credentials.get("token").ok_or_else(|| {
             TrackerError::new("authentication_failed", "tracker credential is missing")
         })?;
-        self.fetch(&ctx.http, token.expose()).await
+        let enterprise_url = ctx
+            .tracker
+            .settings
+            .get(ENTERPRISE_URL)
+            .and_then(Value::as_str);
+        let endpoint = self.endpoint(enterprise_url)?;
+        self.fetch(&ctx.http, &endpoint, token.expose()).await
     }
+}
+
+fn normalize_enterprise_url(value: &str) -> Result<String, TrackerError> {
+    let mut url = reqwest::Url::parse(value).map_err(|_| {
+        TrackerError::invalid("enterprise_url must be a valid HTTPS URL")
+            .detail("field", ENTERPRISE_URL)
+    })?;
+    if url.scheme() != "https"
+        || url.host_str().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err(
+            TrackerError::invalid("enterprise_url must be a valid HTTPS URL")
+                .detail("field", ENTERPRISE_URL),
+        );
+    }
+    url.set_path("");
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url.to_string().trim_end_matches('/').to_owned())
+}
+
+fn enterprise_endpoint(value: &str) -> Result<String, TrackerError> {
+    let normalized = normalize_enterprise_url(value)?;
+    let mut url =
+        reqwest::Url::parse(&normalized).expect("a normalized GitHub Enterprise URL remains valid");
+    let api_host = format!(
+        "api.{}",
+        url.host_str()
+            .expect("a normalized GitHub Enterprise URL has a host")
+    );
+    url.set_host(Some(&api_host)).map_err(|_| {
+        TrackerError::invalid("enterprise_url must use a DNS hostname")
+            .detail("field", ENTERPRISE_URL)
+    })?;
+    url.set_path("/copilot_internal/user");
+    Ok(url.into())
 }
 
 fn classify_transport(error: reqwest::Error) -> TrackerError {
@@ -287,7 +358,26 @@ mod tests {
     #[test]
     fn test_endpoint_constructor_is_available_for_adapter_tests() {
         let provider = GitHubCopilotProvider::test_endpoint("http://127.0.0.1:9".into());
-        assert_eq!(provider.endpoint, "http://127.0.0.1:9");
+        assert_eq!(provider.endpoint(None).unwrap(), "http://127.0.0.1:9");
+    }
+
+    #[test]
+    fn builds_the_usage_endpoint_for_github_enterprise() {
+        assert_eq!(
+            GitHubCopilotProvider::default().endpoint(None).unwrap(),
+            ENDPOINT
+        );
+        assert_eq!(
+            enterprise_endpoint("https://octocorp.ghe.com/login?source=test#fragment").unwrap(),
+            "https://api.octocorp.ghe.com/copilot_internal/user"
+        );
+    }
+
+    #[test]
+    fn rejects_insecure_enterprise_urls() {
+        let error = enterprise_endpoint("http://github.example.com").unwrap_err();
+        assert_eq!(error.code, "invalid_input");
+        assert_eq!(error.details["field"], ENTERPRISE_URL);
     }
 
     #[tokio::test]
@@ -317,11 +407,18 @@ mod tests {
             "token".into(),
             Value::String("account-specific-token".into()),
         );
+        input.insert(
+            ENTERPRISE_URL.into(),
+            Value::String("https://octocorp.ghe.com/login".into()),
+        );
 
         let prepared = provider.validate_setup(&context, input).await.unwrap();
 
         request.assert_async().await;
         assert_eq!(prepared.secrets["token"].expose(), "account-specific-token");
-        assert!(prepared.public_settings.is_empty());
+        assert_eq!(
+            prepared.public_settings[ENTERPRISE_URL],
+            "https://octocorp.ghe.com"
+        );
     }
 }

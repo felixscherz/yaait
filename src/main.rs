@@ -247,6 +247,29 @@ fn complete_input(
     if !io::stdin().is_terminal() {
         return Ok(input);
     }
+    if descriptor.id.as_str() == "github-copilot" && !input.contains_key("enterprise_url") {
+        eprint!("GitHub host (github.com or GHE) [github.com]: ");
+        io::stderr().flush().ok();
+        let mut value = String::new();
+        io::stdin()
+            .read_line(&mut value)
+            .map_err(|_| TrackerError::invalid("could not read setup input"))?;
+        match parse_github_host(value.trim())? {
+            GitHubHost::Public => {}
+            GitHubHost::Enterprise => {
+                eprint!("GitHub Enterprise URL: ");
+                io::stderr().flush().ok();
+                let mut enterprise_url = String::new();
+                io::stdin()
+                    .read_line(&mut enterprise_url)
+                    .map_err(|_| TrackerError::invalid("could not read setup input"))?;
+                input.insert(
+                    "enterprise_url".into(),
+                    Value::String(enterprise_url.trim().to_owned()),
+                );
+            }
+        }
+    }
     let missing_fields = descriptor
         .setup
         .fields
@@ -278,6 +301,22 @@ fn complete_input(
         input.insert(field.key.clone(), value);
     }
     Ok(input)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum GitHubHost {
+    Public,
+    Enterprise,
+}
+
+fn parse_github_host(value: &str) -> Result<GitHubHost, TrackerError> {
+    match value.to_ascii_lowercase().as_str() {
+        "" | "github" | "github.com" | "public" => Ok(GitHubHost::Public),
+        "ghe" | "enterprise" => Ok(GitHubHost::Enterprise),
+        _ => Err(TrackerError::invalid(
+            "GitHub host must be 'github.com' or 'GHE'",
+        )),
+    }
 }
 
 fn canonical_name(command: &Command) -> &'static str {
@@ -312,4 +351,20 @@ fn emit(envelope: &Envelope, pretty: bool) -> ExitCode {
         ),
     }
     ExitCode::from(envelope.exit_code())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_interactive_github_host_choices() {
+        for value in ["", "github", "github.com", "public"] {
+            assert_eq!(parse_github_host(value).unwrap(), GitHubHost::Public);
+        }
+        for value in ["ghe", "GHE", "enterprise"] {
+            assert_eq!(parse_github_host(value).unwrap(), GitHubHost::Enterprise);
+        }
+        assert!(parse_github_host("gitlab").is_err());
+    }
 }
