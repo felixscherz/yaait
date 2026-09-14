@@ -25,6 +25,25 @@ Without `--input`, interactive setup presents a deployment selector that default
 to GitHub.com. Choosing GitHub Enterprise prompts for a domain such as
 `octocorp.ghe.com` or a full URL before prompting for the token.
 
+## LiteLLM
+
+The `litellm` provider reports spend, token counts, request counts, and an
+optional key or user budget. It needs a LiteLLM virtual key that can read its own
+key information, user information, and aggregated spend data:
+
+```sh
+cargo run -- add --provider litellm litellm-work
+```
+
+Interactive setup prompts for `https://ai.exxeta.info`, the virtual key, and the
+reporting window without placing the key in shell history.
+`window` is optional and accepts `7d`, `30d`, or `90d`; it defaults to `30d`.
+The tracker uses `/key/info` to identify the key owner and read any key-level
+budget, `/v2/user/info` as a fallback for the user's budget, then
+`/user/daily/activity/aggregated` for usage totals. Some LiteLLM deployments
+require the virtual key to have the `get_spend_routes` permission. Browser and
+SSO session credentials are not supported.
+
 Tracker manifests and credentials live in platform data directories. On Linux,
 setting `XDG_DATA_HOME` and `XDG_CACHE_HOME` gives a fully isolated environment:
 

@@ -16,6 +16,7 @@ fn provider_discovery_uses_the_versioned_json_envelope() {
     assert_eq!(response["command"], "providers.list");
     assert_eq!(response["ok"], true);
     assert_eq!(response["data"]["providers"][0]["id"], "github-copilot");
+    assert_eq!(response["data"]["providers"][1]["id"], "litellm");
 }
 
 #[test]
