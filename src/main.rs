@@ -11,7 +11,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use yaait::{
     AddRequest, App, AppPaths, FileRegistry, ProviderDescriptor, ProviderId, SetupFieldKind,
-    SetupInput, TrackerError, TrackerId,
+    SetupInput, TrackerError, TrackerId, UsageOptions,
     application::{RemovedData, ServiceResult},
     presentation::Envelope,
     providers::{GitHubCopilotProvider, LiteLlmProvider},
@@ -96,6 +96,8 @@ struct RemoveArgs {
 struct UsageArgs {
     #[arg(long = "tracker")]
     trackers: Vec<String>,
+    #[arg(long)]
+    details: bool,
 }
 
 #[tokio::main]
@@ -231,7 +233,14 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
                 .iter()
                 .map(|value| TrackerId::from_str(value))
                 .collect::<Result<Vec<_>, _>>()?;
-            let result = app.usage(&filters).await?;
+            let result = app
+                .usage(
+                    &filters,
+                    UsageOptions {
+                        details: args.details,
+                    },
+                )
+                .await?;
             Ok(Envelope::usage(result.data, result.warnings, result.errors))
         }
         Command::Debug => unreachable!("debug returns before application initialization"),
@@ -375,7 +384,7 @@ fn emit(envelope: &Envelope, pretty: bool) -> ExitCode {
     match output {
         Ok(output) => println!("{output}"),
         Err(_) => println!(
-            "{{\"schema_version\":1,\"command\":\"cli\",\"ok\":false,\"partial\":false,\"data\":null,\"warnings\":[],\"errors\":[{{\"code\":\"storage_error\",\"message\":\"could not serialize response\"}}]}}"
+            "{{\"schema_version\":2,\"command\":\"cli\",\"ok\":false,\"partial\":false,\"data\":null,\"warnings\":[],\"errors\":[{{\"code\":\"storage_error\",\"message\":\"could not serialize response\"}}]}}"
         ),
     }
     ExitCode::from(envelope.exit_code())

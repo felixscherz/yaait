@@ -7,9 +7,9 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use crate::{
-    MetricDescriptor, MetricKind, PreparedSetup, ProviderDescriptor, ProviderId, Secret, SecretMap,
-    SetupContext, SetupField, SetupFieldKind, SetupInput, SetupSchema, TrackerContext,
-    TrackerError, TrackerProvider, UsageMetric, UsageReport,
+    MetricDescriptor, MetricKind, MetricTier, PreparedSetup, ProviderDescriptor, ProviderId,
+    Secret, SecretMap, SetupContext, SetupField, SetupFieldKind, SetupInput, SetupSchema,
+    TrackerContext, TrackerError, TrackerProvider, UsageMetric, UsageReport,
 };
 
 const ENDPOINT: &str = "https://api.github.com/copilot_internal/user";
@@ -100,6 +100,7 @@ impl TrackerProvider for GitHubCopilotProvider {
                     label: "Chat requests".into(),
                     description: "Monthly Copilot chat request quota.".into(),
                     kind: MetricKind::Quota,
+                    tier: MetricTier::Detail,
                     unit: "request".into(),
                 },
                 MetricDescriptor {
@@ -107,6 +108,7 @@ impl TrackerProvider for GitHubCopilotProvider {
                     label: "Premium interactions".into(),
                     description: "Monthly Copilot premium interaction quota.".into(),
                     kind: MetricKind::Quota,
+                    tier: MetricTier::Primary,
                     unit: "request".into(),
                 },
             ],
@@ -298,6 +300,11 @@ fn quota_metric(
         id: id.into(),
         label: label.into(),
         kind: MetricKind::Quota,
+        tier: if id == "premium-interactions" {
+            MetricTier::Primary
+        } else {
+            MetricTier::Detail
+        },
         unit: "request".into(),
         used: None,
         remaining: snapshot.remaining,
@@ -348,7 +355,9 @@ mod tests {
         );
         assert_eq!(report.metrics.len(), 2);
         assert_eq!(report.metrics[0].remaining, Some(12.0));
+        assert_eq!(report.metrics[0].tier, MetricTier::Detail);
         assert_eq!(report.metrics[1].id, "premium-interactions");
+        assert_eq!(report.metrics[1].tier, MetricTier::Primary);
         assert_eq!(report.metrics[1].remaining, Some(0.0));
         assert_eq!(report.metrics[1].limit, None);
         crate::validate_report(&report).unwrap();

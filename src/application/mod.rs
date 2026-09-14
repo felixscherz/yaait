@@ -10,9 +10,9 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
-    ProviderDescriptor, ProviderId, ProviderSummary, SetupContext, SetupInput, TrackerContext,
-    TrackerDetail, TrackerError, TrackerId, TrackerManifest, TrackerProvider, TrackerReport,
-    TrackerSummary,
+    MetricTier, ProviderDescriptor, ProviderId, ProviderSummary, SetupContext, SetupInput,
+    TrackerContext, TrackerDetail, TrackerError, TrackerId, TrackerManifest, TrackerProvider,
+    TrackerReport, TrackerSummary,
     infrastructure::{FileRegistry, WriterLock, build_http_client},
     validate_report, validate_setup_input,
 };
@@ -39,6 +39,11 @@ pub struct AddRequest {
     pub name: Option<String>,
     pub description: Option<String>,
     pub input: SetupInput,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UsageOptions {
+    pub details: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -294,7 +299,11 @@ impl App {
         }))
     }
 
-    pub async fn usage(&self, filters: &[TrackerId]) -> Result<UsageResult, TrackerError> {
+    pub async fn usage(
+        &self,
+        filters: &[TrackerId],
+        options: UsageOptions,
+    ) -> Result<UsageResult, TrackerError> {
         let mut discovery = self.registry.discover()?;
         let selected = if filters.is_empty() {
             let mut selected = Vec::new();
@@ -344,7 +353,13 @@ impl App {
                 };
                 let report = provider.collect(&context).await?;
                 validate_report(&report)?;
-                Ok(TrackerReport::from_report(&tracker, report))
+                let mut report = TrackerReport::from_report(&tracker, report);
+                if !options.details {
+                    report
+                        .metrics
+                        .retain(|metric| metric.tier == MetricTier::Primary);
+                }
+                Ok(report)
             };
             let result = match tokio::time::timeout(self.config.tracker_timeout, result).await {
                 Ok(result) => result,
@@ -408,8 +423,8 @@ mod tests {
     use serde_json::Map;
 
     use crate::{
-        MetricKind, PreparedSetup, Secret, SetupField, SetupFieldKind, SetupSchema, UsageMetric,
-        UsageReport,
+        MetricKind, MetricTier, PreparedSetup, Secret, SetupField, SetupFieldKind, SetupSchema,
+        UsageMetric, UsageReport,
     };
 
     use super::*;
@@ -458,19 +473,36 @@ mod tests {
             Ok(UsageReport {
                 observed_at: Utc::now(),
                 identity: None,
-                metrics: vec![UsageMetric {
-                    id: "requests".into(),
-                    label: "Requests".into(),
-                    kind: MetricKind::Counter,
-                    unit: "request".into(),
-                    used: None,
-                    remaining: None,
-                    limit: None,
-                    value: Some(1.0),
-                    period: None,
-                    resets_at: None,
-                    attributes: Map::new(),
-                }],
+                metrics: vec![
+                    UsageMetric {
+                        id: "requests".into(),
+                        label: "Requests".into(),
+                        kind: MetricKind::Counter,
+                        tier: MetricTier::Primary,
+                        unit: "request".into(),
+                        used: None,
+                        remaining: None,
+                        limit: None,
+                        value: Some(1.0),
+                        period: None,
+                        resets_at: None,
+                        attributes: Map::new(),
+                    },
+                    UsageMetric {
+                        id: "tokens".into(),
+                        label: "Tokens".into(),
+                        kind: MetricKind::Counter,
+                        tier: MetricTier::Detail,
+                        unit: "token".into(),
+                        used: None,
+                        remaining: None,
+                        limit: None,
+                        value: Some(10.0),
+                        period: None,
+                        resets_at: None,
+                        attributes: Map::new(),
+                    },
+                ],
                 attributes: Map::new(),
             })
         }
@@ -500,7 +532,7 @@ mod tests {
             .unwrap();
         }
 
-        let result = app.usage(&[]).await.unwrap();
+        let result = app.usage(&[], UsageOptions::default()).await.unwrap();
         assert_eq!(result.data.trackers.len(), 1);
         assert_eq!(result.data.trackers[0].id.as_str(), "personal");
         assert_eq!(result.errors.len(), 1);
@@ -550,8 +582,41 @@ mod tests {
             .unwrap();
         }
 
-        let reports = app.usage(&[]).await.unwrap().data.trackers;
+        let reports = app
+            .usage(&[], UsageOptions::default())
+            .await
+            .unwrap()
+            .data
+            .trackers;
         assert_eq!(reports[0].id.as_str(), "alpha");
         assert_eq!(reports[1].id.as_str(), "zulu");
+    }
+
+    #[tokio::test]
+    async fn usage_returns_only_primary_metrics_unless_details_are_requested() {
+        let temp = tempfile::tempdir().unwrap();
+        let registry = FileRegistry::new(crate::AppPaths::isolated(temp.path()));
+        let mut app = App::new(registry).unwrap();
+        app.register_provider(Arc::new(FakeProvider));
+        app.add(AddRequest {
+            id: "work".parse().unwrap(),
+            provider: "fake".parse().unwrap(),
+            name: None,
+            description: None,
+            input: input("good"),
+        })
+        .await
+        .unwrap();
+
+        let summary = app.usage(&[], UsageOptions::default()).await.unwrap();
+        assert_eq!(summary.data.trackers[0].metrics.len(), 1);
+        assert_eq!(summary.data.trackers[0].metrics[0].id, "requests");
+
+        let details = app
+            .usage(&[], UsageOptions { details: true })
+            .await
+            .unwrap();
+        assert_eq!(details.data.trackers[0].metrics.len(), 2);
+        assert_eq!(details.data.trackers[0].metrics[1].id, "tokens");
     }
 }

@@ -13,7 +13,7 @@ fn provider_discovery_uses_the_versioned_json_envelope() {
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
     let response: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(response["schema_version"], 1);
+    assert_eq!(response["schema_version"], 2);
     assert_eq!(response["command"], "providers.list");
     assert_eq!(response["ok"], true);
     assert_eq!(response["data"]["providers"][0]["id"], "github-copilot");

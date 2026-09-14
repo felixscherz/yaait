@@ -70,6 +70,9 @@ Quota windows use `limit: 100`, `used: usedPercent`, and
 upstream limit ID and window duration in attributes. Dynamic upstream IDs must
 be converted to valid, collision-safe metric slugs.
 
+The five-hour and weekly quota windows are primary metrics and appear in the
+default `usage` response. Other quota windows and activity metrics are details.
+
 Additional metrics may report credit balance, available reset credits,
 lifetime tokens, peak daily tokens, and streak lengths when supplied by the
 server.
@@ -104,4 +107,3 @@ server.
   metrics and document that reports can include additional bucket-derived IDs.
 - Very large token counters exceed exact `f64` integer precision. A later report
   schema should add exact integer values.
-

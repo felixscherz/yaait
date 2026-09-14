@@ -38,6 +38,8 @@ pub struct MetricDescriptor {
     pub label: String,
     pub description: String,
     pub kind: super::MetricKind,
+    #[serde(default)]
+    pub tier: super::MetricTier,
     pub unit: String,
 }
 

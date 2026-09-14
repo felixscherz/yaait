@@ -21,7 +21,7 @@ impl Envelope {
         warnings: Vec<TrackerError>,
     ) -> Self {
         Self {
-            schema_version: 1,
+            schema_version: 2,
             command: command.into(),
             ok: true,
             partial: false,
@@ -33,7 +33,7 @@ impl Envelope {
 
     pub fn failure(command: impl Into<String>, error: TrackerError) -> Self {
         Self {
-            schema_version: 1,
+            schema_version: 2,
             command: command.into(),
             ok: false,
             partial: false,
@@ -59,7 +59,7 @@ impl Envelope {
             .unwrap_or(false);
         let failed = !errors.is_empty();
         Self {
-            schema_version: 1,
+            schema_version: 2,
             command: "usage".into(),
             ok: !failed,
             partial: failed && reports_present,

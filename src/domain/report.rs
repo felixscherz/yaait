@@ -15,6 +15,14 @@ pub enum MetricKind {
     Gauge,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MetricTier {
+    Primary,
+    #[default]
+    Detail,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Identity {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,6 +38,8 @@ pub struct UsageMetric {
     pub id: String,
     pub label: String,
     pub kind: MetricKind,
+    #[serde(default)]
+    pub tier: MetricTier,
     pub unit: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub used: Option<f64>,
@@ -172,6 +182,7 @@ mod tests {
             id: id.into(),
             label: "Quota".into(),
             kind: MetricKind::Quota,
+            tier: MetricTier::Detail,
             unit: "request".into(),
             used: None,
             remaining: Some(2.0),

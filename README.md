@@ -12,6 +12,13 @@ printf '%s' '{"token":"…"}' | cargo run -- add \
 cargo run -- usage
 ```
 
+`usage` reports only each tracker's primary budget metrics by default. Pass
+`--details` to include all usage counters and provider-specific metrics:
+
+```sh
+cargo run -- usage --details
+```
+
 For a GitHub Enterprise account, also provide its domain or HTTPS URL. The tracker uses
 the corresponding `api.<host>` Copilot endpoint and keeps the URL in the tracker
 manifest:

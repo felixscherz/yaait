@@ -7,9 +7,9 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use crate::{
-    Identity, MetricDescriptor, MetricKind, PreparedSetup, ProviderDescriptor, ProviderId, Secret,
-    SecretMap, SetupContext, SetupField, SetupFieldKind, SetupInput, SetupSchema, TrackerContext,
-    TrackerError, TrackerProvider, UsageMetric, UsageReport,
+    Identity, MetricDescriptor, MetricKind, MetricTier, PreparedSetup, ProviderDescriptor,
+    ProviderId, Secret, SecretMap, SetupContext, SetupField, SetupFieldKind, SetupInput,
+    SetupSchema, TrackerContext, TrackerError, TrackerProvider, UsageMetric, UsageReport,
 };
 
 const BASE_URL: &str = "base_url";
@@ -320,6 +320,11 @@ fn metric_descriptors() -> Vec<MetricDescriptor> {
             ),
         },
         kind,
+        tier: if id == "budget" {
+            MetricTier::Primary
+        } else {
+            MetricTier::Detail
+        },
         unit: unit.into(),
     })
     .collect()
@@ -615,6 +620,7 @@ fn into_report(
             id: "budget".into(),
             label: label.into(),
             kind: MetricKind::Quota,
+            tier: MetricTier::Primary,
             unit: "usd".into(),
             used,
             remaining: used.map(|spend| (limit - spend).max(0.0)),
@@ -664,6 +670,7 @@ fn counter_metric(id: &str, label: &str, unit: &str, value: f64, period: &str) -
         id: id.into(),
         label: label.into(),
         kind: MetricKind::Counter,
+        tier: MetricTier::Detail,
         unit: unit.into(),
         used: None,
         remaining: None,
@@ -959,6 +966,7 @@ mod tests {
             .find(|metric| metric.id == "budget")
             .unwrap();
         assert_eq!(budget.used, Some(4.25));
+        assert_eq!(budget.tier, MetricTier::Primary);
         assert_eq!(budget.remaining, Some(5.75));
         assert_eq!(budget.limit, Some(10.0));
         assert_eq!(budget.attributes["scope"], "key");
