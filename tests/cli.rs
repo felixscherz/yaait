@@ -1,5 +1,6 @@
 use std::process::Command;
 
+use directories::ProjectDirs;
 use serde_json::Value;
 
 fn yaait() -> Command {
@@ -35,4 +36,24 @@ fn help_remains_plain_text() {
     let output = yaait().arg("--help").output().unwrap();
     assert!(output.status.success());
     assert!(String::from_utf8(output.stdout).unwrap().contains("Usage:"));
+}
+
+#[test]
+fn debug_shows_the_effective_application_directories() {
+    let output = yaait().arg("debug").output().unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+
+    let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let expected = ProjectDirs::from("", "", "yaait").unwrap();
+    assert_eq!(response["command"], "debug");
+    assert_eq!(response["ok"], true);
+    assert_eq!(
+        response["data"]["app_dir"],
+        expected.data_dir().to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        response["data"]["cache_dir"],
+        expected.cache_dir().to_string_lossy().as_ref()
+    );
 }

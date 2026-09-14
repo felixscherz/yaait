@@ -55,6 +55,13 @@ export XDG_CACHE_HOME="$PWD/.local/cache"
 The default output is one schema-versioned JSON document. Complete success exits
 with status 0, failure with 1, and a mixed usage result with 2.
 
+To inspect the application data and cache directories selected by the current
+environment and platform configuration, run:
+
+```sh
+cargo run -- debug
+```
+
 ## Development
 
 ```sh

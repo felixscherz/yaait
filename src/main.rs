@@ -7,6 +7,7 @@ use std::{
 
 use clap::{Args, Parser, Subcommand, ValueEnum, error::ErrorKind};
 use dialoguer::Select;
+use serde::Serialize;
 use serde_json::{Map, Value};
 use yaait::{
     AddRequest, App, AppPaths, FileRegistry, ProviderDescriptor, ProviderId, SetupFieldKind,
@@ -43,6 +44,13 @@ enum Command {
     Disable { tracker_id: String },
     Remove(RemoveArgs),
     Usage(UsageArgs),
+    Debug,
+}
+
+#[derive(Serialize)]
+struct DebugData {
+    app_dir: std::path::PathBuf,
+    cache_dir: std::path::PathBuf,
 }
 
 #[derive(Args)]
@@ -128,7 +136,19 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
-    let registry = FileRegistry::new(AppPaths::discover()?);
+    let paths = AppPaths::discover()?;
+    if matches!(&cli.command, Command::Debug) {
+        return Ok(Envelope::success(
+            "debug",
+            DebugData {
+                app_dir: paths.data_root,
+                cache_dir: paths.cache_root,
+            },
+            Vec::new(),
+        ));
+    }
+
+    let registry = FileRegistry::new(paths);
     let mut app = App::new(registry)?;
     app.register_provider(Arc::new(GitHubCopilotProvider::default()));
     app.register_provider(Arc::new(LiteLlmProvider::default()));
@@ -214,6 +234,7 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
             let result = app.usage(&filters).await?;
             Ok(Envelope::usage(result.data, result.warnings, result.errors))
         }
+        Command::Debug => unreachable!("debug returns before application initialization"),
     }
 }
 
@@ -341,6 +362,7 @@ fn canonical_name(command: &Command) -> &'static str {
         Command::Disable { .. } => "disable",
         Command::Remove(_) => "remove",
         Command::Usage(_) => "usage",
+        Command::Debug => "debug",
     }
 }
 
