@@ -8,4 +8,3 @@ activity without copying Codex credentials into `yaait`.
 
 - [Specification](spec.md)
 - Implementation should follow the LiteLLM provider.
-

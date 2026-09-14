@@ -71,8 +71,32 @@ cargo run -- debug
 
 ## Development
 
+Install the git hooks once (requires [prek](https://github.com/j178/prek));
+they run rustfmt and clippy on every commit and enforce conventional commit
+messages:
+
+```sh
+prek install
+```
+
 ```sh
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
 ```
+
+## Releasing
+
+Versions are tagged `vX.Y.Z` and must match `version` in `Cargo.toml`:
+
+```sh
+# 1. bump version in Cargo.toml and commit: chore(release): vX.Y.Z
+# 2. tag and push
+git tag vX.Y.Z
+git push origin main vX.Y.Z
+```
+
+Pushing the tag runs the release workflow: it verifies the tag matches
+`Cargo.toml`, runs the tests, generates release notes with
+[git-cliff](https://git-cliff.org) from conventional commits, and creates a
+GitHub Release. To preview the notes locally, run `git-cliff --unreleased`.

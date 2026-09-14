@@ -110,4 +110,3 @@ enough data to represent them without inference.
 - `claude setup-token` should be verified against the usage endpoint before
   implementation. If it cannot read subscription usage, the provider would
   need short-lived token refresh support and should remain deferred.
-

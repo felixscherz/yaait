@@ -1,0 +1,36 @@
+# Runs with prek (https://github.com/j178/prek) or pre-commit.
+# Install hooks: prek install
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        language: system
+        entry: cargo fmt --all -- --check
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        language: system
+        entry: cargo clippy --all-targets --locked -- -D warnings
+        pass_filenames: false
+
+      # git-cliff builds release notes from conventional commits, so
+      # enforce the format on every commit message.
+      - id: conventional-commit
+        name: conventional commit message
+        language: system
+        stages: [commit-msg]
+        entry: >-
+          bash -c 'grep -Eq "^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9._/-]+\))?(!)?: .+|^Merge |^Revert \"" "$1"' _

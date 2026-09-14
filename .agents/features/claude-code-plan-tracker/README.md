@@ -9,4 +9,3 @@ has a higher maintenance risk than the LiteLLM and Codex providers.
 
 - [Specification](spec.md)
 - Implementation should follow the supported LiteLLM and Codex integrations.
-
