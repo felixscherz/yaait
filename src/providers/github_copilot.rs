@@ -86,8 +86,8 @@ impl TrackerProvider for GitHubCopilotProvider {
                     },
                     SetupField {
                         key: ENTERPRISE_URL.into(),
-                        label: "GitHub Enterprise URL".into(),
-                        description: "The GitHub Enterprise account URL, for example https://octocorp.ghe.com. Omit for github.com.".into(),
+                        label: "GitHub Enterprise URL or domain".into(),
+                        description: "The GitHub Enterprise domain or HTTPS URL, for example octocorp.ghe.com or https://octocorp.ghe.com. Omit for GitHub.com.".into(),
                         kind: SetupFieldKind::String,
                         required: false,
                         allowed_values: None,
@@ -158,8 +158,14 @@ impl TrackerProvider for GitHubCopilotProvider {
 }
 
 fn normalize_enterprise_url(value: &str) -> Result<String, TrackerError> {
-    let mut url = reqwest::Url::parse(value).map_err(|_| {
-        TrackerError::invalid("enterprise_url must be a valid HTTPS URL")
+    let value = value.trim();
+    let candidate = if value.contains("://") {
+        value.to_owned()
+    } else {
+        format!("https://{value}")
+    };
+    let mut url = reqwest::Url::parse(&candidate).map_err(|_| {
+        TrackerError::invalid("enterprise_url must be a valid domain or HTTPS URL")
             .detail("field", ENTERPRISE_URL)
     })?;
     if url.scheme() != "https"
@@ -168,7 +174,7 @@ fn normalize_enterprise_url(value: &str) -> Result<String, TrackerError> {
         || url.password().is_some()
     {
         return Err(
-            TrackerError::invalid("enterprise_url must be a valid HTTPS URL")
+            TrackerError::invalid("enterprise_url must be a valid domain or HTTPS URL")
                 .detail("field", ENTERPRISE_URL),
         );
     }
@@ -369,6 +375,10 @@ mod tests {
         );
         assert_eq!(
             enterprise_endpoint("https://octocorp.ghe.com/login?source=test#fragment").unwrap(),
+            "https://api.octocorp.ghe.com/copilot_internal/user"
+        );
+        assert_eq!(
+            enterprise_endpoint("octocorp.ghe.com").unwrap(),
             "https://api.octocorp.ghe.com/copilot_internal/user"
         );
     }

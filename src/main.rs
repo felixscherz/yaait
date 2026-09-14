@@ -6,6 +6,7 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand, ValueEnum, error::ErrorKind};
+use dialoguer::Select;
 use serde_json::{Map, Value};
 use yaait::{
     AddRequest, App, AppPaths, FileRegistry, ProviderDescriptor, ProviderId, SetupFieldKind,
@@ -248,16 +249,18 @@ fn complete_input(
         return Ok(input);
     }
     if descriptor.id.as_str() == "github-copilot" && !input.contains_key("enterprise_url") {
-        eprint!("GitHub host (github.com or GHE) [github.com]: ");
-        io::stderr().flush().ok();
-        let mut value = String::new();
-        io::stdin()
-            .read_line(&mut value)
-            .map_err(|_| TrackerError::invalid("could not read setup input"))?;
-        match parse_github_host(value.trim())? {
+        let selection = Select::new()
+            .with_prompt("Select GitHub deployment type")
+            .items(["GitHub.com", "GitHub Enterprise"])
+            .default(0)
+            .interact()
+            .map_err(|_| TrackerError::invalid("could not read GitHub deployment type"))?;
+        match GitHubHost::from_selection(selection)? {
             GitHubHost::Public => {}
             GitHubHost::Enterprise => {
-                eprint!("GitHub Enterprise URL: ");
+                eprint!(
+                    "Enter your GitHub Enterprise URL or domain (company.ghe.com or https://company.ghe.com): "
+                );
                 io::stderr().flush().ok();
                 let mut enterprise_url = String::new();
                 io::stdin()
@@ -309,13 +312,15 @@ enum GitHubHost {
     Enterprise,
 }
 
-fn parse_github_host(value: &str) -> Result<GitHubHost, TrackerError> {
-    match value.to_ascii_lowercase().as_str() {
-        "" | "github" | "github.com" | "public" => Ok(GitHubHost::Public),
-        "ghe" | "enterprise" => Ok(GitHubHost::Enterprise),
-        _ => Err(TrackerError::invalid(
-            "GitHub host must be 'github.com' or 'GHE'",
-        )),
+impl GitHubHost {
+    fn from_selection(selection: usize) -> Result<Self, TrackerError> {
+        match selection {
+            0 => Ok(Self::Public),
+            1 => Ok(Self::Enterprise),
+            _ => Err(TrackerError::invalid(
+                "invalid GitHub deployment type selection",
+            )),
+        }
     }
 }
 
@@ -358,13 +363,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_interactive_github_host_choices() {
-        for value in ["", "github", "github.com", "public"] {
-            assert_eq!(parse_github_host(value).unwrap(), GitHubHost::Public);
-        }
-        for value in ["ghe", "GHE", "enterprise"] {
-            assert_eq!(parse_github_host(value).unwrap(), GitHubHost::Enterprise);
-        }
-        assert!(parse_github_host("gitlab").is_err());
+    fn maps_interactive_github_deployment_choices() {
+        assert_eq!(GitHubHost::from_selection(0).unwrap(), GitHubHost::Public);
+        assert_eq!(
+            GitHubHost::from_selection(1).unwrap(),
+            GitHubHost::Enterprise
+        );
+        assert!(GitHubHost::from_selection(2).is_err());
     }
 }

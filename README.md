@@ -12,7 +12,7 @@ printf '%s' '{"token":"…"}' | cargo run -- add \
 cargo run -- usage
 ```
 
-For a GitHub Enterprise account, also provide its account URL. The tracker uses
+For a GitHub Enterprise account, also provide its domain or HTTPS URL. The tracker uses
 the corresponding `api.<host>` Copilot endpoint and keeps the URL in the tracker
 manifest:
 
@@ -21,8 +21,9 @@ printf '%s' '{"token":"…","enterprise_url":"https://octocorp.ghe.com"}' | \
   cargo run -- add --provider github-copilot --input - github-copilot-work
 ```
 
-Without `--input`, interactive setup asks whether the account uses github.com or
-GHE. GHE setup then asks for the enterprise URL before prompting for the token.
+Without `--input`, interactive setup presents a deployment selector that defaults
+to GitHub.com. Choosing GitHub Enterprise prompts for a domain such as
+`octocorp.ghe.com` or a full URL before prompting for the token.
 
 Tracker manifests and credentials live in platform data directories. On Linux,
 setting `XDG_DATA_HOME` and `XDG_CACHE_HOME` gives a fully isolated environment:
