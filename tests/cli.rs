@@ -39,6 +39,45 @@ fn help_remains_plain_text() {
 }
 
 #[test]
+fn human_format_renders_provider_list_as_text() {
+    let output = yaait()
+        .args(["--format", "human", "providers", "list"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("github-copilot:"));
+    assert!(stdout.contains("litellm:"));
+    assert!(serde_json::from_str::<Value>(&stdout).is_err());
+}
+
+#[test]
+fn human_format_renders_debug_as_text() {
+    let output = yaait()
+        .args(["debug", "--format", "human"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("app_dir:"));
+    assert!(stdout.contains("cache_dir:"));
+}
+
+#[test]
+fn human_format_reports_invalid_arguments_on_stderr() {
+    let output = yaait()
+        .args(["--format", "human", "not-a-command"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("error: [invalid_input]"));
+}
+
+#[test]
 fn debug_shows_the_effective_application_directories() {
     let output = yaait().arg("debug").output().unwrap();
     assert!(output.status.success());

@@ -13,7 +13,7 @@ use yaait::{
     AddRequest, App, AppPaths, FileRegistry, ProviderDescriptor, ProviderId, SetupFieldKind,
     SetupInput, TrackerError, TrackerId, UsageOptions,
     application::{RemovedData, ServiceResult},
-    presentation::Envelope,
+    presentation::{Envelope, human},
     providers::{GitHubCopilotProvider, LiteLlmProvider},
 };
 
@@ -31,6 +31,7 @@ struct Cli {
 #[derive(Clone, Copy, ValueEnum)]
 enum OutputFormat {
     Json,
+    Human,
 }
 
 #[derive(Subcommand)]
@@ -114,19 +115,14 @@ async fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         Err(error) => {
-            let envelope = Envelope::failure(
-                "cli",
-                TrackerError::invalid(
-                    error
-                        .to_string()
-                        .lines()
-                        .next()
-                        .unwrap_or("invalid arguments"),
-                ),
-            );
-            return emit(&envelope, false);
+            let raw = error.to_string();
+            let line = raw.lines().next().unwrap_or("invalid arguments");
+            let message = line.strip_prefix("error: ").unwrap_or(line);
+            let envelope = Envelope::failure("cli", TrackerError::invalid(message));
+            return emit(&envelope, requested_format(), false);
         }
     };
+    let format = cli.format;
     let pretty = cli.pretty;
     let command_name = canonical_name(&cli.command);
     let result = run(cli).await;
@@ -134,7 +130,7 @@ async fn main() -> ExitCode {
         Ok(envelope) => envelope,
         Err(error) => Envelope::failure(command_name, error),
     };
-    emit(&envelope, pretty)
+    emit(&envelope, format, pretty)
 }
 
 async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
@@ -375,17 +371,44 @@ fn canonical_name(command: &Command) -> &'static str {
     }
 }
 
-fn emit(envelope: &Envelope, pretty: bool) -> ExitCode {
-    let output = if pretty {
-        serde_json::to_string_pretty(envelope)
-    } else {
-        serde_json::to_string(envelope)
-    };
-    match output {
-        Ok(output) => println!("{output}"),
-        Err(_) => println!(
-            "{{\"schema_version\":2,\"command\":\"cli\",\"ok\":false,\"partial\":false,\"data\":null,\"warnings\":[],\"errors\":[{{\"code\":\"storage_error\",\"message\":\"could not serialize response\"}}]}}"
-        ),
+fn requested_format() -> OutputFormat {
+    let args: Vec<String> = std::env::args().collect();
+    for (index, arg) in args.iter().enumerate() {
+        if arg == "--format" {
+            if args.get(index + 1).map(String::as_str) == Some("human") {
+                return OutputFormat::Human;
+            }
+        } else if arg == "--format=human" {
+            return OutputFormat::Human;
+        }
+    }
+    OutputFormat::Json
+}
+
+fn emit(envelope: &Envelope, format: OutputFormat, pretty: bool) -> ExitCode {
+    match format {
+        OutputFormat::Json => {
+            let output = if pretty {
+                serde_json::to_string_pretty(envelope)
+            } else {
+                serde_json::to_string(envelope)
+            };
+            match output {
+                Ok(output) => println!("{output}"),
+                Err(_) => println!(
+                    "{{\"schema_version\":2,\"command\":\"cli\",\"ok\":false,\"partial\":false,\"data\":null,\"warnings\":[],\"errors\":[{{\"code\":\"storage_error\",\"message\":\"could not serialize response\"}}]}}"
+                ),
+            }
+        }
+        OutputFormat::Human => {
+            let rendered = human::render(envelope);
+            if !rendered.stdout.is_empty() {
+                println!("{}", rendered.stdout);
+            }
+            if !rendered.stderr.is_empty() {
+                eprintln!("{}", rendered.stderr);
+            }
+        }
     }
     ExitCode::from(envelope.exit_code())
 }

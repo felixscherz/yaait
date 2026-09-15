@@ -62,6 +62,24 @@ export XDG_CACHE_HOME="$PWD/.local/cache"
 The default output is one schema-versioned JSON document. Complete success exits
 with status 0, failure with 1, and a mixed usage result with 2.
 
+For a condensed, human-readable rendering of the same data, pass `--format human`
+to any command. Data goes to stdout, warnings and errors to stderr, and exit
+codes are unchanged:
+
+```sh
+cargo run -- --format human usage
+```
+
+```text
+copilot-rct:
+    remaining: 4,353 of 10,000 requests (43.5%)
+    resets_at: 2026-10-01 00:00:00Z (in 15 days, 14 hours)
+litellm-exxeta:
+    remaining: $32.40 of $40.00
+    used: $7.60 (19.0%)
+    resets_at: 2026-10-01 00:00:00Z (in 15 days, 14 hours)
+```
+
 To inspect the application data and cache directories selected by the current
 environment and platform configuration, run:
 
