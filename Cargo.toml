@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 description = "Multi-instance AI usage tracker"
 license = "MIT"
+repository = "https://github.com/felixscherz/yaait"
+homepage = "https://github.com/felixscherz/yaait"
+readme = "README.md"
 
 [dependencies]
 async-trait = "0.1"

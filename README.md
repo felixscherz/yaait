@@ -6,6 +6,27 @@ instance of a compiled-in provider;
 two trackers can therefore use GitHub Copilot with different credentials without
 sharing state.
 
+## Installation
+
+### Homebrew
+
+Once the personal Homebrew tap is available, install the latest release with:
+
+```sh
+brew install felixscherz/tap/yaait
+```
+
+The formula builds yaait from its tagged GitHub source release. Homebrew will
+keep the installed version up to date with `brew upgrade`.
+
+### From source
+
+Rust 1.85 or newer is required. To install the current checkout directly:
+
+```sh
+cargo install --locked --path .
+```
+
 ```sh
 cargo run -- providers describe github-copilot
 printf '%s' '{"token":"…"}' | cargo run -- add \
