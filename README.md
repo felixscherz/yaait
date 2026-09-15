@@ -72,8 +72,8 @@ The default output is one schema-versioned JSON document. Complete success exits
 with status 0, failure with 1, and a mixed usage result with 2.
 
 For a condensed, human-readable rendering of the same data, pass `--format human`
-to any command. Data goes to stdout, warnings and errors to stderr, and exit
-codes are unchanged:
+or its `--human` shortcut to any command. Data goes to stdout, warnings and errors
+to stderr, and exit codes are unchanged:
 
 ```sh
 cargo run -- --format human usage

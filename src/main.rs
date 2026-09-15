@@ -22,6 +22,8 @@ use yaait::{
 struct Cli {
     #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Json)]
     format: OutputFormat,
+    #[arg(long, global = true, conflicts_with = "format")]
+    human: bool,
     #[arg(long, global = true)]
     pretty: bool,
     #[command(subcommand)]
@@ -125,7 +127,11 @@ async fn main() -> ExitCode {
             return emit(&envelope, requested_format(), false);
         }
     };
-    let format = cli.format;
+    let format = if cli.human {
+        OutputFormat::Human
+    } else {
+        cli.format
+    };
     let pretty = cli.pretty;
     let command_name = canonical_name(&cli.command);
     let result = run(cli).await;
@@ -386,7 +392,7 @@ fn requested_format() -> OutputFormat {
             if args.get(index + 1).map(String::as_str) == Some("human") {
                 return OutputFormat::Human;
             }
-        } else if arg == "--format=human" {
+        } else if arg == "--format=human" || arg == "--human" {
             return OutputFormat::Human;
         }
     }
