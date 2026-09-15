@@ -9,7 +9,10 @@ fn yaait() -> Command {
 
 #[test]
 fn provider_discovery_uses_the_versioned_json_envelope() {
-    let output = yaait().args(["providers", "list"]).output().unwrap();
+    let output = yaait()
+        .args(["--format", "json", "providers", "list"])
+        .output()
+        .unwrap();
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
     let response: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -22,7 +25,10 @@ fn provider_discovery_uses_the_versioned_json_envelope() {
 
 #[test]
 fn invalid_cli_arguments_are_json_and_fail() {
-    let output = yaait().arg("not-a-command").output().unwrap();
+    let output = yaait()
+        .args(["--format", "json", "not-a-command"])
+        .output()
+        .unwrap();
     assert_eq!(output.status.code(), Some(1));
     assert!(output.stderr.is_empty());
     let response: Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -49,6 +55,16 @@ fn human_format_renders_provider_list_as_text() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("github-copilot:"));
     assert!(stdout.contains("litellm:"));
+    assert!(serde_json::from_str::<Value>(&stdout).is_err());
+}
+
+#[test]
+fn human_output_is_the_default() {
+    let output = yaait().args(["providers", "list"]).output().unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("github-copilot:"));
     assert!(serde_json::from_str::<Value>(&stdout).is_err());
 }
 
@@ -101,8 +117,71 @@ fn human_format_reports_invalid_arguments_on_stderr() {
 }
 
 #[test]
+fn usage_primary_view_is_available() {
+    let home = tempfile::tempdir().unwrap();
+    let output = yaait()
+        .env("HOME", home.path())
+        .args(["usage", "--primary"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "no trackers configured\n"
+    );
+}
+
+#[test]
+fn usage_defaults_to_the_primary_human_view() {
+    let home = tempfile::tempdir().unwrap();
+    let output = yaait()
+        .env("HOME", home.path())
+        .arg("usage")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "no trackers configured\n"
+    );
+}
+
+#[test]
+fn usage_details_view_is_available() {
+    let home = tempfile::tempdir().unwrap();
+    let output = yaait()
+        .env("HOME", home.path())
+        .args(["usage", "--details"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "no trackers configured\n"
+    );
+}
+
+#[test]
+fn usage_metric_views_are_mutually_exclusive() {
+    let output = yaait()
+        .args(["usage", "--primary", "--details"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("cannot be used with"));
+}
+
+#[test]
 fn debug_shows_the_effective_application_directories() {
-    let output = yaait().arg("debug").output().unwrap();
+    let output = yaait()
+        .args(["--format", "json", "debug"])
+        .output()
+        .unwrap();
     assert!(output.status.success());
     assert!(output.stderr.is_empty());
 

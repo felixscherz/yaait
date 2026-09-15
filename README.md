@@ -1,7 +1,8 @@
 # yaait
 
-`yaait` is a proof-of-concept, JSON-first CLI for tracking multiple AI provider
-accounts independently. A tracker is a named instance of a compiled-in provider;
+`yaait` is a proof-of-concept CLI for tracking multiple AI provider accounts
+independently, with human-readable and JSON output modes. A tracker is a named
+instance of a compiled-in provider;
 two trackers can therefore use GitHub Copilot with different credentials without
 sharing state.
 
@@ -13,7 +14,8 @@ cargo run -- usage
 ```
 
 `usage` reports only each tracker's primary budget metrics by default. Pass
-`--details` to include all usage counters and provider-specific metrics:
+`--primary` to select that view explicitly, or `--details` to include all usage
+counters and provider-specific metrics:
 
 ```sh
 cargo run -- usage --details
@@ -68,12 +70,13 @@ export XDG_DATA_HOME="$PWD/.local/data"
 export XDG_CACHE_HOME="$PWD/.local/cache"
 ```
 
-The default output is one schema-versioned JSON document. Complete success exits
-with status 0, failure with 1, and a mixed usage result with 2.
+The default output is human-readable text. Pass `--format json` for one
+schema-versioned JSON document. Complete success exits with status 0, failure
+with 1, and a mixed usage result with 2.
 
-For a condensed, human-readable rendering of the same data, pass `--format human`
-or its `--human` shortcut to any command. Data goes to stdout, warnings and errors
-to stderr, and exit codes are unchanged:
+`--format human` or its `--human` shortcut explicitly select the default human
+rendering. Data goes to stdout, warnings and errors to stderr, and exit codes are
+unchanged:
 
 ```sh
 cargo run -- --format human usage

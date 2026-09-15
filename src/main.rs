@@ -20,7 +20,7 @@ use yaait::{
 #[derive(Parser)]
 #[command(name = "yaait", version, about = "Multi-instance AI usage tracker")]
 struct Cli {
-    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Json)]
+    #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
     #[arg(long, global = true, conflicts_with = "format")]
     human: bool,
@@ -99,8 +99,12 @@ struct RemoveArgs {
 struct UsageArgs {
     #[arg(long = "tracker")]
     trackers: Vec<String>,
-    #[arg(long)]
+    /// Include every available metric instead of only primary budget metrics
+    #[arg(long, conflicts_with = "primary")]
     details: bool,
+    /// Show only primary budget metrics
+    #[arg(long, conflicts_with = "details")]
+    primary: bool,
     /// Bypass cached usage reports and query every selected tracker
     #[arg(long)]
     refresh: bool,
@@ -387,16 +391,23 @@ fn canonical_name(command: &Command) -> &'static str {
 
 fn requested_format() -> OutputFormat {
     let args: Vec<String> = std::env::args().collect();
+    let mut format = OutputFormat::Human;
     for (index, arg) in args.iter().enumerate() {
         if arg == "--format" {
-            if args.get(index + 1).map(String::as_str) == Some("human") {
-                return OutputFormat::Human;
+            match args.get(index + 1).map(String::as_str) {
+                Some("human") => format = OutputFormat::Human,
+                Some("json") => format = OutputFormat::Json,
+                _ => {}
             }
-        } else if arg == "--format=human" || arg == "--human" {
-            return OutputFormat::Human;
+        } else if arg == "--format=human" {
+            format = OutputFormat::Human;
+        } else if arg == "--format=json" {
+            format = OutputFormat::Json;
+        } else if arg == "--human" {
+            format = OutputFormat::Human;
         }
     }
-    OutputFormat::Json
+    format
 }
 
 fn emit(envelope: &Envelope, format: OutputFormat, pretty: bool) -> ExitCode {
