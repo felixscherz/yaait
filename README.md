@@ -16,12 +16,14 @@ Once the personal Homebrew tap is available, install the latest release with:
 brew install felixscherz/tap/yaait
 ```
 
-The formula builds yaait from its tagged GitHub source release. Homebrew will
-keep the installed version up to date with `brew upgrade`.
+The formula downloads a prebuilt binary from the tagged GitHub Release, so
+installation does not require Rust or a local native build toolchain. Homebrew
+will keep the installed version up to date with `brew upgrade`.
 
-### From source
+### From source or an unsupported platform
 
-Rust 1.85 or newer is required. To install the current checkout directly:
+Rust 1.85 or newer is required. To install the current checkout directly, or
+to install on a platform without a release archive:
 
 ```sh
 cargo install --locked --path .
@@ -147,7 +149,14 @@ git tag vX.Y.Z
 git push origin main vX.Y.Z
 ```
 
-Pushing the tag runs the release workflow: it verifies the tag matches
-`Cargo.toml`, runs the tests, generates release notes with
-[git-cliff](https://git-cliff.org) from conventional commits, and creates a
-GitHub Release. To preview the notes locally, run `git-cliff --unreleased`.
+Pushing the tag runs the cargo-dist release workflow. It builds archives for
+Apple Silicon macOS, Intel macOS, ARM64 Linux, and x86_64 Linux, uploads the
+archives and SHA-256 checksums to a GitHub Release, and updates the personal
+Homebrew tap with a formula that downloads the matching archive. Release notes
+are generated from `CHANGELOG.md`. The tap publish job requires a
+`HOMEBREW_TAP_TOKEN` repository secret with write access to
+`felixscherz/homebrew-tap`. Before the release is announced, CI verifies every
+archive checksum and runs `yaait providers list` and `yaait --version` on its
+matching platform runner.
+
+To preview the notes locally, run `git-cliff --unreleased`.

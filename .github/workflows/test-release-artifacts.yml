@@ -1,0 +1,48 @@
+name: Test Release Artifacts
+
+on:
+  workflow_call:
+    inputs:
+      plan:
+        required: true
+        type: string
+
+jobs:
+  smoke-test:
+    name: ${{ matrix.targets[0] }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(inputs.plan).ci.github.artifacts_matrix }}
+    runs-on: ${{ matrix.runner }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TARGET: ${{ matrix.targets[0] }}
+      TAG: ${{ fromJson(inputs.plan).announcement_tag }}
+    steps:
+      - name: Download release archive
+        run: |
+          mkdir release
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "yaait-${TARGET}.tar.xz" \
+            --pattern "yaait-${TARGET}.tar.xz.sha256" \
+            --dir release
+
+      - name: Verify archive checksum
+        working-directory: release
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum --check "yaait-${TARGET}.tar.xz.sha256"
+          else
+            shasum --algorithm 256 --check "yaait-${TARGET}.tar.xz.sha256"
+          fi
+
+      - name: Extract binary
+        working-directory: release
+        run: tar -xJf "yaait-${TARGET}.tar.xz"
+
+      - name: Smoke test
+        working-directory: release
+        run: |
+          "./yaait-${TARGET}/yaait" providers list
+          "./yaait-${TARGET}/yaait" --version

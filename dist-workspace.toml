@@ -1,0 +1,18 @@
+[workspace]
+members = ["cargo:."]
+
+[dist]
+cargo-dist-version = "0.32.0"
+ci = "github"
+installers = ["homebrew"]
+publish-jobs = ["homebrew", "./test-release-artifacts"]
+tap = "felixscherz/homebrew-tap"
+github-custom-job-permissions = { "test-release-artifacts" = { contents = "read" } }
+checksum = "sha256"
+targets = [
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-unknown-linux-gnu",
+]
+hosting = "github"
