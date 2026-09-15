@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-09-15
+
+### Miscellaneous
+
+- Prepare cargo-dist for prebuilt binaries
+
 ## [0.1.0] - 2026-09-15
 
 ### Added
@@ -28,3 +34,4 @@ All notable changes to this project will be documented in this file.
 
 - Release management
 - Fix release pipeline
+- Release v0.1.0
