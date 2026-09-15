@@ -34,7 +34,7 @@ jobs:
         run: cargo test --locked
 
       - name: Generate release notes
-        uses: orhunp/git-cliff-action@v4
+        uses: orhun/git-cliff-action@v4
         with:
           config: cliff.toml
           args: --latest --strip header
