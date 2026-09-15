@@ -7,9 +7,10 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use crate::{
-    Identity, MetricDescriptor, MetricKind, MetricTier, PreparedSetup, ProviderDescriptor,
-    ProviderId, Secret, SecretMap, SetupContext, SetupField, SetupFieldKind, SetupInput,
-    SetupSchema, TrackerContext, TrackerError, TrackerProvider, UsageMetric, UsageReport,
+    CachePolicy, Identity, MetricDescriptor, MetricKind, MetricTier, PreparedSetup,
+    ProviderDescriptor, ProviderId, ReportCache, Secret, SecretMap, SetupContext, SetupField,
+    SetupFieldKind, SetupInput, SetupSchema, TrackerContext, TrackerError, TrackerProvider,
+    UsageMetric, UsageReport,
 };
 
 const BASE_URL: &str = "base_url";
@@ -237,7 +238,17 @@ impl TrackerProvider for LiteLlmProvider {
         })
     }
 
-    async fn collect(&self, ctx: &TrackerContext) -> Result<UsageReport, TrackerError> {
+    async fn collect(
+        &self,
+        ctx: &TrackerContext,
+        policy: CachePolicy,
+    ) -> Result<UsageReport, TrackerError> {
+        let cache = ReportCache::new(ctx.cache_dir.clone());
+        if policy == CachePolicy::Cached
+            && let Some(report) = cache.fresh(crate::DEFAULT_CACHE_TTL, Utc::now())
+        {
+            return Ok(report);
+        }
         let base_url = setting_string(&ctx.tracker.settings, BASE_URL)?;
         let window = ReportingWindow::parse(setting_string(&ctx.tracker.settings, WINDOW)?)?;
         let token = ctx.credentials.get(TOKEN).ok_or_else(|| {
@@ -261,7 +272,9 @@ impl TrackerProvider for LiteLlmProvider {
                     .await?,
             )
         };
-        Ok(into_report(key_info, user_info, activity, window))
+        let report = into_report(key_info, user_info, activity, window);
+        cache.store(&report);
+        Ok(report)
     }
 }
 
@@ -770,7 +783,7 @@ mod tests {
         })
     }
 
-    fn tracker_context() -> TrackerContext {
+    fn tracker_context(cache_dir: PathBuf) -> TrackerContext {
         let mut settings = Map::new();
         settings.insert(
             BASE_URL.into(),
@@ -794,14 +807,14 @@ mod tests {
                 extensions: BTreeMap::new(),
             },
             data_dir: PathBuf::from("data"),
-            cache_dir: PathBuf::from("cache"),
+            cache_dir,
             credentials,
             http: reqwest::Client::new(),
         }
     }
 
-    async fn mock_success(server: &MockServer) {
-        server
+    async fn mock_success(server: &MockServer) -> (httpmock::Mock<'_>, httpmock::Mock<'_>) {
+        let key_info = server
             .mock_async(|when, then| {
                 when.method(GET)
                     .path("/key/info")
@@ -810,7 +823,7 @@ mod tests {
                 then.status(200).json_body(key_info_body());
             })
             .await;
-        server
+        let activity = server
             .mock_async(|when, then| {
                 when.method(GET)
                     .path("/user/daily/activity/aggregated")
@@ -820,6 +833,7 @@ mod tests {
                 then.status(200).json_body(activity_body());
             })
             .await;
+        (key_info, activity)
     }
 
     async fn mock_user_budget_success(server: &MockServer) {
@@ -948,9 +962,13 @@ mod tests {
         let server = MockServer::start_async().await;
         mock_success(&server).await;
         let provider = LiteLlmProvider::test_base_url(server.base_url());
-        let context = tracker_context();
+        let temp = tempfile::tempdir().unwrap();
+        let context = tracker_context(temp.path().join("cache"));
 
-        let report = provider.collect(&context).await.unwrap();
+        let report = provider
+            .collect(&context, CachePolicy::Cached)
+            .await
+            .unwrap();
 
         crate::validate_report(&report).unwrap();
         assert_eq!(
@@ -981,8 +999,13 @@ mod tests {
         let server = MockServer::start_async().await;
         mock_user_budget_success(&server).await;
         let provider = LiteLlmProvider::test_base_url(server.base_url());
+        let temp = tempfile::tempdir().unwrap();
+        let context = tracker_context(temp.path().join("cache"));
 
-        let report = provider.collect(&tracker_context()).await.unwrap();
+        let report = provider
+            .collect(&context, CachePolicy::Cached)
+            .await
+            .unwrap();
 
         crate::validate_report(&report).unwrap();
         let budget = report
@@ -1000,6 +1023,33 @@ mod tests {
             budget.resets_at,
             Some(Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap())
         );
+    }
+
+    #[tokio::test]
+    async fn collect_reuses_a_fresh_cached_report_until_refresh() {
+        let server = MockServer::start_async().await;
+        let (key_info, activity) = mock_success(&server).await;
+        let provider = LiteLlmProvider::test_base_url(server.base_url());
+        let temp = tempfile::tempdir().unwrap();
+        let context = tracker_context(temp.path().join("cache"));
+
+        provider
+            .collect(&context, CachePolicy::Cached)
+            .await
+            .unwrap();
+        provider
+            .collect(&context, CachePolicy::Cached)
+            .await
+            .unwrap();
+        assert_eq!(key_info.calls_async().await, 1);
+        assert_eq!(activity.calls_async().await, 1);
+
+        provider
+            .collect(&context, CachePolicy::Refresh)
+            .await
+            .unwrap();
+        assert_eq!(key_info.calls_async().await, 2);
+        assert_eq!(activity.calls_async().await, 2);
     }
 
     #[test]

@@ -77,6 +77,16 @@ pub struct PreparedSetup {
     pub secrets: SecretMap,
 }
 
+/// How a tracker should treat its cached usage report during `collect`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CachePolicy {
+    /// Reuse the cached report while it is still fresh.
+    #[default]
+    Cached,
+    /// Ignore any cached report and query the provider API.
+    Refresh,
+}
+
 pub fn validate_setup_input(schema: &SetupSchema, input: &SetupInput) -> Result<(), TrackerError> {
     let known: BTreeSet<_> = schema
         .fields
@@ -152,5 +162,9 @@ pub trait TrackerProvider: Send + Sync {
         input: SetupInput,
     ) -> Result<PreparedSetup, TrackerError>;
 
-    async fn collect(&self, ctx: &TrackerContext) -> Result<UsageReport, TrackerError>;
+    async fn collect(
+        &self,
+        ctx: &TrackerContext,
+        policy: CachePolicy,
+    ) -> Result<UsageReport, TrackerError>;
 }

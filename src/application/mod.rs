@@ -10,9 +10,9 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
-    MetricTier, ProviderDescriptor, ProviderId, ProviderSummary, SetupContext, SetupInput,
-    TrackerContext, TrackerDetail, TrackerError, TrackerId, TrackerManifest, TrackerProvider,
-    TrackerReport, TrackerSummary,
+    CachePolicy, MetricTier, ProviderDescriptor, ProviderId, ProviderSummary, SetupContext,
+    SetupInput, TrackerContext, TrackerDetail, TrackerError, TrackerId, TrackerManifest,
+    TrackerProvider, TrackerReport, TrackerSummary,
     infrastructure::{FileRegistry, WriterLock, build_http_client},
     validate_report, validate_setup_input,
 };
@@ -44,6 +44,7 @@ pub struct AddRequest {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct UsageOptions {
     pub details: bool,
+    pub cache: CachePolicy,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -351,7 +352,7 @@ impl App {
                     credentials,
                     http: self.http.clone(),
                 };
-                let report = provider.collect(&context).await?;
+                let report = provider.collect(&context, options.cache).await?;
                 validate_report(&report)?;
                 let mut report = TrackerReport::from_report(&tracker, report);
                 if !options.details {
@@ -429,7 +430,10 @@ mod tests {
 
     use super::*;
 
-    struct FakeProvider;
+    #[derive(Default)]
+    struct FakeProvider {
+        policies: std::sync::Mutex<Vec<CachePolicy>>,
+    }
 
     #[async_trait]
     impl TrackerProvider for FakeProvider {
@@ -466,7 +470,12 @@ mod tests {
             })
         }
 
-        async fn collect(&self, ctx: &TrackerContext) -> Result<UsageReport, TrackerError> {
+        async fn collect(
+            &self,
+            ctx: &TrackerContext,
+            policy: CachePolicy,
+        ) -> Result<UsageReport, TrackerError> {
+            self.policies.lock().unwrap().push(policy);
             if ctx.credentials["token"].expose() == "bad" {
                 return Err(TrackerError::new("authentication_failed", "token rejected"));
             }
@@ -519,7 +528,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let registry = FileRegistry::new(crate::AppPaths::isolated(temp.path()));
         let mut app = App::new(registry).unwrap();
-        app.register_provider(Arc::new(FakeProvider));
+        app.register_provider(Arc::new(FakeProvider::default()));
         for (id, token) in [("personal", "good"), ("work", "bad")] {
             app.add(AddRequest {
                 id: id.parse().unwrap(),
@@ -544,7 +553,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let registry = FileRegistry::new(crate::AppPaths::isolated(temp.path()));
         let mut app = App::new(registry.clone()).unwrap();
-        app.register_provider(Arc::new(FakeProvider));
+        app.register_provider(Arc::new(FakeProvider::default()));
         let error = app
             .add(AddRequest {
                 id: "work".parse().unwrap(),
@@ -569,7 +578,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let registry = FileRegistry::new(crate::AppPaths::isolated(temp.path()));
         let mut app = App::new(registry).unwrap();
-        app.register_provider(Arc::new(FakeProvider));
+        app.register_provider(Arc::new(FakeProvider::default()));
         for id in ["zulu", "alpha"] {
             app.add(AddRequest {
                 id: id.parse().unwrap(),
@@ -597,7 +606,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let registry = FileRegistry::new(crate::AppPaths::isolated(temp.path()));
         let mut app = App::new(registry).unwrap();
-        app.register_provider(Arc::new(FakeProvider));
+        app.register_provider(Arc::new(FakeProvider::default()));
         app.add(AddRequest {
             id: "work".parse().unwrap(),
             provider: "fake".parse().unwrap(),
@@ -613,10 +622,50 @@ mod tests {
         assert_eq!(summary.data.trackers[0].metrics[0].id, "requests");
 
         let details = app
-            .usage(&[], UsageOptions { details: true })
+            .usage(
+                &[],
+                UsageOptions {
+                    details: true,
+                    ..UsageOptions::default()
+                },
+            )
             .await
             .unwrap();
         assert_eq!(details.data.trackers[0].metrics.len(), 2);
         assert_eq!(details.data.trackers[0].metrics[1].id, "tokens");
+    }
+
+    #[tokio::test]
+    async fn usage_passes_the_cache_policy_to_providers() {
+        let temp = tempfile::tempdir().unwrap();
+        let registry = FileRegistry::new(crate::AppPaths::isolated(temp.path()));
+        let mut app = App::new(registry).unwrap();
+        let provider = Arc::new(FakeProvider::default());
+        app.register_provider(provider.clone());
+        app.add(AddRequest {
+            id: "work".parse().unwrap(),
+            provider: "fake".parse().unwrap(),
+            name: None,
+            description: None,
+            input: input("good"),
+        })
+        .await
+        .unwrap();
+
+        app.usage(&[], UsageOptions::default()).await.unwrap();
+        app.usage(
+            &[],
+            UsageOptions {
+                cache: CachePolicy::Refresh,
+                ..UsageOptions::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            *provider.policies.lock().unwrap(),
+            vec![CachePolicy::Cached, CachePolicy::Refresh]
+        );
     }
 }

@@ -19,6 +19,15 @@ cargo run -- usage
 cargo run -- usage --details
 ```
 
+Each tracker caches its usage report for five minutes, so repeated `usage`
+calls do not query the provider APIs again. The report's `observed_at`
+timestamp reflects when the data was actually fetched. Pass `--refresh` to
+bypass the cache and collect fresh data from every selected tracker:
+
+```sh
+cargo run -- usage --refresh
+```
+
 For a GitHub Enterprise account, also provide its domain or HTTPS URL. The tracker uses
 the corresponding `api.<host>` Copilot endpoint and keeps the URL in the tracker
 manifest:

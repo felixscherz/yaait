@@ -7,9 +7,10 @@ use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use crate::{
-    MetricDescriptor, MetricKind, MetricTier, PreparedSetup, ProviderDescriptor, ProviderId,
-    Secret, SecretMap, SetupContext, SetupField, SetupFieldKind, SetupInput, SetupSchema,
-    TrackerContext, TrackerError, TrackerProvider, UsageMetric, UsageReport,
+    CachePolicy, MetricDescriptor, MetricKind, MetricTier, PreparedSetup, ProviderDescriptor,
+    ProviderId, ReportCache, Secret, SecretMap, SetupContext, SetupField, SetupFieldKind,
+    SetupInput, SetupSchema, TrackerContext, TrackerError, TrackerProvider, UsageMetric,
+    UsageReport,
 };
 
 const ENDPOINT: &str = "https://api.github.com/copilot_internal/user";
@@ -145,7 +146,17 @@ impl TrackerProvider for GitHubCopilotProvider {
         })
     }
 
-    async fn collect(&self, ctx: &TrackerContext) -> Result<UsageReport, TrackerError> {
+    async fn collect(
+        &self,
+        ctx: &TrackerContext,
+        policy: CachePolicy,
+    ) -> Result<UsageReport, TrackerError> {
+        let cache = ReportCache::new(ctx.cache_dir.clone());
+        if policy == CachePolicy::Cached
+            && let Some(report) = cache.fresh(crate::DEFAULT_CACHE_TTL, Utc::now())
+        {
+            return Ok(report);
+        }
         let token = ctx.credentials.get("token").ok_or_else(|| {
             TrackerError::new("authentication_failed", "tracker credential is missing")
         })?;
@@ -155,7 +166,9 @@ impl TrackerProvider for GitHubCopilotProvider {
             .get(ENTERPRISE_URL)
             .and_then(Value::as_str);
         let endpoint = self.endpoint(enterprise_url)?;
-        self.fetch(&ctx.http, &endpoint, token.expose()).await
+        let report = self.fetch(&ctx.http, &endpoint, token.expose()).await?;
+        cache.store(&report);
+        Ok(report)
     }
 }
 
@@ -397,6 +410,62 @@ mod tests {
         let error = enterprise_endpoint("http://github.example.com").unwrap_err();
         assert_eq!(error.code, "invalid_input");
         assert_eq!(error.details["field"], ENTERPRISE_URL);
+    }
+
+    fn tracker_context(cache_dir: std::path::PathBuf) -> TrackerContext {
+        let mut credentials = BTreeMap::new();
+        credentials.insert("token".into(), Secret::new("account-specific-token"));
+        TrackerContext {
+            tracker: crate::TrackerManifest {
+                schema_version: 1,
+                id: "personal".parse().unwrap(),
+                provider: "github-copilot".parse().unwrap(),
+                name: "Personal".into(),
+                description: None,
+                enabled: true,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+                settings: Map::new(),
+                extensions: BTreeMap::new(),
+            },
+            data_dir: std::path::PathBuf::from("data"),
+            cache_dir,
+            credentials,
+            http: reqwest::Client::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn collect_reuses_a_fresh_cached_report_until_refresh() {
+        let server = MockServer::start_async().await;
+        let request = server
+            .mock_async(|when, then| {
+                when.method(GET).path("/copilot_internal/user");
+                then.status(200).json_body(serde_json::json!({
+                    "copilot_plan": "individual",
+                    "quota_snapshots": {"chat": {"remaining": 7, "entitlement": 10}}
+                }));
+            })
+            .await;
+        let provider = GitHubCopilotProvider::test_endpoint(server.url("/copilot_internal/user"));
+        let temp = tempfile::tempdir().unwrap();
+        let context = tracker_context(temp.path().join("cache"));
+
+        provider
+            .collect(&context, CachePolicy::Cached)
+            .await
+            .unwrap();
+        provider
+            .collect(&context, CachePolicy::Cached)
+            .await
+            .unwrap();
+        assert_eq!(request.calls_async().await, 1);
+
+        provider
+            .collect(&context, CachePolicy::Refresh)
+            .await
+            .unwrap();
+        assert_eq!(request.calls_async().await, 2);
     }
 
     #[tokio::test]

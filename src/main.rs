@@ -10,8 +10,8 @@ use dialoguer::Select;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use yaait::{
-    AddRequest, App, AppPaths, FileRegistry, ProviderDescriptor, ProviderId, SetupFieldKind,
-    SetupInput, TrackerError, TrackerId, UsageOptions,
+    AddRequest, App, AppPaths, CachePolicy, FileRegistry, ProviderDescriptor, ProviderId,
+    SetupFieldKind, SetupInput, TrackerError, TrackerId, UsageOptions,
     application::{RemovedData, ServiceResult},
     presentation::{Envelope, human},
     providers::{GitHubCopilotProvider, LiteLlmProvider},
@@ -99,6 +99,9 @@ struct UsageArgs {
     trackers: Vec<String>,
     #[arg(long)]
     details: bool,
+    /// Bypass cached usage reports and query every selected tracker
+    #[arg(long)]
+    refresh: bool,
 }
 
 #[tokio::main]
@@ -234,6 +237,11 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
                     &filters,
                     UsageOptions {
                         details: args.details,
+                        cache: if args.refresh {
+                            CachePolicy::Refresh
+                        } else {
+                            CachePolicy::Cached
+                        },
                     },
                 )
                 .await?;
