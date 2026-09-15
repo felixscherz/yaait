@@ -42,7 +42,7 @@ key information, user information, and aggregated spend data:
 cargo run -- add --provider litellm litellm-work
 ```
 
-Interactive setup prompts for `https://ai.exxeta.info`, the virtual key, and the
+Interactive setup prompts for `https://my-litellm-instance.example`, the virtual key, and the
 reporting window without placing the key in shell history.
 `window` is optional and accepts `7d`, `30d`, or `90d`; it defaults to `30d`.
 The tracker uses `/key/info` to identify the key owner and read any key-level

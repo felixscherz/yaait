@@ -2,7 +2,7 @@
 
 ## Problem and goals
 
-The Exxeta LiteLLM dashboard shows useful account-level usage, but `yaait`
+The LiteLLM dashboard shows useful account-level usage, but `yaait`
 cannot query it alongside other AI subscriptions. The tracker should expose the
 same core totals through the existing provider-neutral report model without
 depending on a browser session.
@@ -13,7 +13,7 @@ The first implementation will:
 - support independently configured LiteLLM instances and accounts;
 - report spend, token counts, and request counts for a fixed recent window;
 - report the virtual key's current budget when the proxy provides one;
-- work with the LiteLLM 1.100.0 API exposed at `https://ai.exxeta.info`;
+- work with the LiteLLM 1.100.0 API exposed at `https://my-litellm-instance.example`;
 - keep detailed request logs and prompt content out of `yaait` output.
 
 ### Non-goals
@@ -143,7 +143,7 @@ or credentials.
 
 ## Open questions
 
-- Whether Exxeta virtual keys already allow self-service spend routes must be
+- Whether virtual keys already allow self-service spend routes must be
   verified with a real user key. The public OpenAPI document cannot answer this.
 - Exact monetary accounting eventually needs a decimal representation. The v1
   report uses `f64`, so this implementation follows the existing numeric
@@ -155,4 +155,5 @@ Implemented in `src/providers/litellm.rs` and registered in the CLI. Automated
 coverage verifies setup, collection, missing budgets, malformed data, status
 classification, URL validation, and credential redaction. Formatting, strict
 Clippy, and the complete test suite pass. Live verification against
-`ai.exxeta.info` remains pending because it requires a user-supplied virtual key.
+`https://my-litellm-instance.example` remains pending because it requires a
+user-supplied virtual key.
