@@ -1,6 +1,7 @@
 use std::{fs, path::Path};
 
 use fs2::FileExt;
+use fs2::lock_contended_error;
 
 use crate::TrackerError;
 
@@ -23,7 +24,7 @@ impl WriterLock {
             .map_err(|_| TrackerError::storage("could not open writer lock"))?;
         super::registry::set_private_file(&path)?;
         file.try_lock_exclusive().map_err(|error| {
-            if error.kind() == std::io::ErrorKind::WouldBlock {
+            if error.raw_os_error() == lock_contended_error().raw_os_error() {
                 TrackerError::new(
                     "operation_in_progress",
                     "another state-changing operation is in progress",
