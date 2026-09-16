@@ -87,19 +87,12 @@ fn metric_lines(metric: &Value, observed_at: Option<&str>) -> Vec<String> {
     }
     let mut lines = Vec::new();
     let limit = number(metric, "limit");
-    let has_used = metric.get("used").is_some_and(Value::is_number);
     if let Some(remaining) = number(metric, "remaining") {
         let percent = metric
             .get("attributes")
             .and_then(|attributes| attributes.get("percent_remaining"))
             .and_then(Value::as_f64)
-            .or_else(|| {
-                if has_used {
-                    None
-                } else {
-                    percent_of(remaining, limit)
-                }
-            });
+            .or_else(|| percent_of(remaining, limit));
         let mut line = format!("remaining: {}", fmt_amount(remaining, unit));
         if let Some(limit) = limit {
             line.push_str(&format!(" of {}", fmt_amount(limit, unit)));
@@ -113,9 +106,6 @@ fn metric_lines(metric: &Value, observed_at: Option<&str>) -> Vec<String> {
     if let Some(used) = number(metric, "used") {
         let mut line = format!("used: {}", fmt_amount(used, unit));
         line.push_str(&unit_suffix(unit, used));
-        if let Some(percent) = percent_of(used, limit) {
-            line.push_str(&format!(" ({percent:.1}%)"));
-        }
         lines.push(line);
     }
     if lines.is_empty()
@@ -323,7 +313,7 @@ fn push_line(out: &mut String, indent: usize, line: &str) {
 fn percent_of(amount: f64, limit: Option<f64>) -> Option<f64> {
     limit.filter(|limit| *limit > 0.0).map(|limit| {
         let percent = amount / limit * 100.0;
-        (percent * 10.0).round() / 10.0
+        ((percent.clamp(0.0, 100.0) * 10.0).round()) / 10.0
     })
 }
 
@@ -473,7 +463,29 @@ mod tests {
         let rendered = render(&envelope("usage", data));
         assert_eq!(
             rendered.stdout,
-            "litellm-work:\n    remaining: $32.40 of $40.00\n    used: $7.60 (19.0%)\n    resets_at: 2026-10-01 00:00:00Z"
+            "litellm-work:\n    remaining: $32.40 of $40.00 (81.0%)\n    used: $7.60\n    resets_at: 2026-10-01 00:00:00Z"
+        );
+    }
+
+    #[test]
+    fn usage_clamps_over_budget_usd_percentages() {
+        let data = json!({"trackers": [{
+            "id": "litellm-exxeta",
+            "provider": "litellm",
+            "metrics": [{
+                "id": "budget",
+                "label": "Key budget",
+                "kind": "quota",
+                "unit": "usd",
+                "used": 9.71647,
+                "remaining": 0.0,
+                "limit": 0.01
+            }]
+        }]});
+        let rendered = render(&envelope("usage", data));
+        assert_eq!(
+            rendered.stdout,
+            "litellm-exxeta:\n    remaining: $0.00 of $0.01 (0.0%)\n    used: $9.72"
         );
     }
 
