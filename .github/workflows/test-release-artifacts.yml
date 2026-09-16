@@ -56,15 +56,15 @@ jobs:
         working-directory: release
         shell: bash
         run: |
-          mkdir -p "yaait-${TARGET}"
           if [[ "${TARGET}" == *-windows-* ]]; then
+            mkdir -p "yaait-${TARGET}"
             if command -v python3 >/dev/null 2>&1; then
               python3 -m zipfile -e "yaait-${TARGET}.zip" "yaait-${TARGET}"
             else
               python -m zipfile -e "yaait-${TARGET}.zip" "yaait-${TARGET}"
             fi
           else
-            tar -xJf "yaait-${TARGET}.tar.xz" -C "yaait-${TARGET}"
+            tar -xJf "yaait-${TARGET}.tar.xz"
           fi
 
       - name: Smoke test
@@ -72,8 +72,13 @@ jobs:
         shell: bash
         run: |
           if [[ "${TARGET}" == *-windows-* ]]; then
-            "./yaait-${TARGET}/yaait.exe" providers list
-            "./yaait-${TARGET}/yaait.exe" --version
+            if [[ "${RUNNER_OS}" == "Windows" ]]; then
+              "./yaait-${TARGET}/yaait.exe" providers list
+              "./yaait-${TARGET}/yaait.exe" --version
+            else
+              echo "Skipping Windows executable smoke test on ${RUNNER_OS} runner"
+              ls -l "./yaait-${TARGET}/yaait.exe"
+            fi
           else
             "./yaait-${TARGET}/yaait" providers list
             "./yaait-${TARGET}/yaait" --version
