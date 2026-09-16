@@ -56,10 +56,15 @@ jobs:
         working-directory: release
         shell: bash
         run: |
+          mkdir -p "yaait-${TARGET}"
           if [[ "${TARGET}" == *-windows-* ]]; then
-            tar -xf "yaait-${TARGET}.zip"
+            if command -v python3 >/dev/null 2>&1; then
+              python3 -m zipfile -e "yaait-${TARGET}.zip" "yaait-${TARGET}"
+            else
+              python -m zipfile -e "yaait-${TARGET}.zip" "yaait-${TARGET}"
+            fi
           else
-            tar -xJf "yaait-${TARGET}.tar.xz"
+            tar -xJf "yaait-${TARGET}.tar.xz" -C "yaait-${TARGET}"
           fi
 
       - name: Smoke test
