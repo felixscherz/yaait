@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.5] - 2026-09-16
+
+### Documentation
+
+- AGENTS.md
+
+### Miscellaneous
+
+- Improve CLI --help
+
 ## [0.2.4] - 2026-09-16
 
 ### Fixed
@@ -11,6 +21,7 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous
 
 - Use consistent names in examples
+- Release v0.2.4
 
 ## [0.2.3] - 2026-09-16
 
