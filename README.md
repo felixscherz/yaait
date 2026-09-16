@@ -8,6 +8,14 @@ sharing state.
 
 ## Installation
 
+Run `yaait` without a command, or `yaait --help`, for a quick-start guide.
+Use `yaait providers list` to discover supported providers and
+`yaait providers describe <PROVIDER_ID>` to inspect their setup requirements.
+Then run `yaait add --provider <PROVIDER_ID> <TRACKER_ID>` to onboard a
+subscription interactively. Give each subscription its own tracker ID,
+including multiple subscriptions for the same provider. Run `yaait usage`
+to check remaining budgets, or `yaait <COMMAND> --help` for command options.
+
 ### Homebrew (macOS and Linux)
 
 Once the personal Homebrew tap is available, install the latest release with:

@@ -45,6 +45,34 @@ fn help_remains_plain_text() {
 }
 
 #[test]
+fn no_command_shows_the_onboarding_help_on_stdout() {
+    let implicit = yaait().output().unwrap();
+    let explicit = yaait().arg("--help").output().unwrap();
+    assert!(implicit.status.success());
+    assert!(implicit.stderr.is_empty());
+    assert_eq!(implicit.stdout, explicit.stdout);
+    let help = String::from_utf8(implicit.stdout).unwrap();
+    assert!(help.contains("yaait providers list"));
+    assert!(help.contains("yaait providers describe github-copilot"));
+    assert!(help.contains("yaait add --provider github-copilot copilot-personal"));
+    assert!(help.contains("yaait --format json usage --details"));
+}
+
+#[test]
+fn onboarding_subcommands_explain_provider_discovery_and_setup_input() {
+    for (args, expected) in [
+        (vec!["providers", "--help"], "required setup fields"),
+        (vec!["add", "--help"], "yaait providers list"),
+        (vec!["setup", "--help"], "JSON object from stdin"),
+    ] {
+        let output = yaait().args(args).output().unwrap();
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        assert!(String::from_utf8(output.stdout).unwrap().contains(expected));
+    }
+}
+
+#[test]
 fn human_format_renders_provider_list_as_text() {
     let output = yaait()
         .args(["--format", "human", "providers", "list"])

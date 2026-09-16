@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use clap::{Args, Parser, Subcommand, ValueEnum, error::ErrorKind};
+use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum, error::ErrorKind};
 use dialoguer::Select;
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -18,12 +18,20 @@ use yaait::{
 };
 
 #[derive(Parser)]
-#[command(name = "yaait", version, about = "Multi-instance AI usage tracker")]
+#[command(
+    name = "yaait",
+    version,
+    about = "Track AI usage and remaining budgets across providers and subscriptions",
+    after_help = "Getting started:\n  1. Discover providers:     yaait providers list\n  2. Inspect setup fields:   yaait providers describe github-copilot\n  3. Add a subscription:     yaait add --provider github-copilot copilot-personal\n  4. Check remaining usage:  yaait usage\n\nEach tracker represents one subscription or API account. Add another tracker\nwith a different ID for a work subscription or another account, even for the\nsame provider. Interactive setup prompts for the provider's credentials.\nFor automated setup, pass --input - to read a JSON object from stdin; use\nproviders describe <PROVIDER_ID> to discover the required fields.\n\nReporting:\n  yaait usage --tracker copilot-personal  Report one tracker\n  yaait usage --refresh                  Fetch fresh usage instead of cached data\n  yaait usage --details                  Include all available metrics\n  yaait --format json usage --details    Detailed structured output for agents\n\nRun yaait <COMMAND> --help for command options, or yaait providers --help\nfor provider discovery commands."
+)]
 struct Cli {
+    /// Output format for command results
     #[arg(long, global = true, value_enum, default_value_t = OutputFormat::Human)]
     format: OutputFormat,
+    /// Shortcut for --format human
     #[arg(long, global = true, conflicts_with = "format")]
     human: bool,
+    /// Pretty-print JSON output
     #[arg(long, global = true)]
     pretty: bool,
     #[command(subcommand)]
@@ -38,15 +46,25 @@ enum OutputFormat {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Discover supported providers and their setup requirements
     Providers(ProvidersArgs),
+    /// Onboard a subscription or API account as a new named tracker
     Add(AddArgs),
+    /// List configured trackers
     List,
+    /// Show a tracker's configuration without credentials
     Show { tracker_id: String },
+    /// Update an existing tracker's settings and credentials
     Setup(SetupArgs),
+    /// Include a tracker in default usage reports
     Enable { tracker_id: String },
+    /// Exclude a tracker from default usage reports
     Disable { tracker_id: String },
+    /// Remove a tracker and its stored data
     Remove(RemoveArgs),
+    /// Report remaining budgets for enabled trackers
     Usage(UsageArgs),
+    /// Show application data and cache directories
     Debug,
 }
 
@@ -64,32 +82,42 @@ struct ProvidersArgs {
 
 #[derive(Subcommand)]
 enum ProvidersCommand {
+    /// List supported providers and their IDs
     List,
+    /// Show provider information and required setup fields
     Describe { provider_id: String },
 }
 
 #[derive(Args)]
 struct AddArgs {
+    /// Provider ID from `yaait providers list`
     #[arg(long)]
     provider: String,
+    /// Display name for this subscription or account
     #[arg(long)]
     name: Option<String>,
+    /// Optional description to distinguish this tracker
     #[arg(long)]
     description: Option<String>,
+    /// Read provider setup as a JSON object from stdin with --input -
     #[arg(long)]
     input: Option<String>,
+    /// Unique tracker ID, such as copilot-personal or copilot-work
     tracker_id: String,
 }
 
 #[derive(Args)]
 struct SetupArgs {
+    /// Read provider setup as a JSON object from stdin with --input -
     #[arg(long)]
     input: Option<String>,
+    /// ID of the tracker to reconfigure
     tracker_id: String,
 }
 
 #[derive(Args)]
 struct RemoveArgs {
+    /// Skip confirmation, required when stdin is not a terminal
     #[arg(long)]
     yes: bool,
     tracker_id: String,
@@ -97,6 +125,7 @@ struct RemoveArgs {
 
 #[derive(Args)]
 struct UsageArgs {
+    /// Report a specific tracker; repeat to select multiple trackers
     #[arg(long = "tracker")]
     trackers: Vec<String>,
     /// Include every available metric instead of only primary budget metrics
@@ -112,6 +141,10 @@ struct UsageArgs {
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    if std::env::args_os().len() == 1 {
+        let _ = Cli::command().print_help();
+        return ExitCode::SUCCESS;
+    }
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(error)
