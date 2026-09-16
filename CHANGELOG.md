@@ -2,11 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.4] - 2026-09-16
+
+### Fixed
+
+- Clamp usage percentage to sensible range
+
+### Miscellaneous
+
+- Use consistent names in examples
+
 ## [0.2.3] - 2026-09-16
 
 ### Miscellaneous
 
 - Fix testing of release artifacts
+- Release v0.2.3
 
 ## [0.2.2] - 2026-09-16
 
