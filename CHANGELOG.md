@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2026-09-16
+
+### Miscellaneous
+
+- Fix windows release workflow
+
 ## [0.2.1] - 2026-09-16
 
 ### Fixed
@@ -11,6 +17,7 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous
 
 - Support windows
+- Release v0.2.1
 
 ## [0.2.0] - 2026-09-15
 
