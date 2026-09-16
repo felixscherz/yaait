@@ -20,29 +20,56 @@ jobs:
       TAG: ${{ fromJson(inputs.plan).announcement_tag }}
     steps:
       - name: Download release archive
+        shell: bash
         run: |
           mkdir release
-          gh release download "$TAG" \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern "yaait-${TARGET}.tar.xz" \
-            --pattern "yaait-${TARGET}.tar.xz.sha256" \
-            --dir release
+          if [[ "${TARGET}" == *-windows-* ]]; then
+            gh release download "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "yaait-${TARGET}.zip" \
+              --pattern "yaait-${TARGET}.zip.sha256" \
+              --dir release
+          else
+            gh release download "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "yaait-${TARGET}.tar.xz" \
+              --pattern "yaait-${TARGET}.tar.xz.sha256" \
+              --dir release
+          fi
 
       - name: Verify archive checksum
         working-directory: release
+        shell: bash
         run: |
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum --check "yaait-${TARGET}.tar.xz.sha256"
+          if [[ "${TARGET}" == *-windows-* ]]; then
+            checksum_file="yaait-${TARGET}.zip.sha256"
           else
-            shasum --algorithm 256 --check "yaait-${TARGET}.tar.xz.sha256"
+            checksum_file="yaait-${TARGET}.tar.xz.sha256"
+          fi
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum --check "$checksum_file"
+          else
+            shasum --algorithm 256 --check "$checksum_file"
           fi
 
       - name: Extract binary
         working-directory: release
-        run: tar -xJf "yaait-${TARGET}.tar.xz"
+        shell: bash
+        run: |
+          if [[ "${TARGET}" == *-windows-* ]]; then
+            tar -xf "yaait-${TARGET}.zip"
+          else
+            tar -xJf "yaait-${TARGET}.tar.xz"
+          fi
 
       - name: Smoke test
         working-directory: release
+        shell: bash
         run: |
-          "./yaait-${TARGET}/yaait" providers list
-          "./yaait-${TARGET}/yaait" --version
+          if [[ "${TARGET}" == *-windows-* ]]; then
+            "./yaait-${TARGET}/yaait.exe" providers list
+            "./yaait-${TARGET}/yaait.exe" --version
+          else
+            "./yaait-${TARGET}/yaait" providers list
+            "./yaait-${TARGET}/yaait" --version
+          fi
