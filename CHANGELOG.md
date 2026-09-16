@@ -2,11 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3] - 2026-09-16
+
+### Miscellaneous
+
+- Fix testing of release artifacts
+
 ## [0.2.2] - 2026-09-16
 
 ### Miscellaneous
 
 - Fix windows release workflow
+- Release v0.2.2
 
 ## [0.2.1] - 2026-09-16
 
