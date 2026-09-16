@@ -132,7 +132,7 @@ cargo run -- --format human usage
 copilot-rct:
     remaining: 4,353 of 10,000 requests (43.5%)
     resets_at: 2026-10-01 00:00:00Z (in 15 days, 14 hours)
-litellm-exxeta:
+litellm-work:
     remaining: $32.40 of $40.00
     used: $7.60 (19.0%)
     resets_at: 2026-10-01 00:00:00Z (in 15 days, 14 hours)

@@ -456,7 +456,7 @@ mod tests {
     #[test]
     fn usage_renders_usd_budget_with_used_share() {
         let data = json!({"trackers": [{
-            "id": "litellm-exxeta",
+            "id": "litellm-work",
             "provider": "litellm",
             "metrics": [{
                 "id": "budget",
@@ -473,14 +473,14 @@ mod tests {
         let rendered = render(&envelope("usage", data));
         assert_eq!(
             rendered.stdout,
-            "litellm-exxeta:\n    remaining: $32.40 of $40.00\n    used: $7.60 (19.0%)\n    resets_at: 2026-10-01 00:00:00Z"
+            "litellm-work:\n    remaining: $32.40 of $40.00\n    used: $7.60 (19.0%)\n    resets_at: 2026-10-01 00:00:00Z"
         );
     }
 
     #[test]
     fn usage_groups_quota_metrics_under_their_label() {
         let data = json!({"trackers": [{
-            "id": "litellm-exxeta",
+            "id": "litellm-work",
             "provider": "litellm",
             "metrics": [
                 {
@@ -503,7 +503,7 @@ mod tests {
         let rendered = render(&envelope("usage", data));
         assert_eq!(
             rendered.stdout,
-            "litellm-exxeta:\n    User budget:\n        remaining: $32.40 of $40.00 (81.0%)\n    Total tokens: 152,334 tokens"
+            "litellm-work:\n    User budget:\n        remaining: $32.40 of $40.00 (81.0%)\n    Total tokens: 152,334 tokens"
         );
     }
 
