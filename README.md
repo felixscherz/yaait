@@ -75,6 +75,9 @@ counters and provider-specific metrics:
 cargo run -- usage --details
 ```
 
+LiteLLM base URLs accept a domain and optional port without a scheme;
+`ai.example.com` becomes `https://ai.example.com`.
+
 Each tracker caches its usage report for five minutes, so repeated `usage`
 calls do not query the provider APIs again. The report's `observed_at`
 timestamp reflects when the data was actually fetched. Pass `--refresh` to

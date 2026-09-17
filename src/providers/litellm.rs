@@ -160,7 +160,7 @@ impl TrackerProvider for LiteLlmProvider {
                     SetupField {
                         key: BASE_URL.into(),
                         label: "LiteLLM base URL".into(),
-                        description: "HTTPS origin of the LiteLLM proxy, for example https://ai.example.com.".into(),
+                        description: "Origin of the LiteLLM proxy, for example ai.example.com. Defaults to HTTPS.".into(),
                         kind: SetupFieldKind::String,
                         required: true,
                         allowed_values: None,
@@ -345,7 +345,12 @@ fn metric_descriptors() -> Vec<MetricDescriptor> {
 
 fn normalize_base_url(value: &str) -> Result<String, TrackerError> {
     let value = value.trim();
-    let mut url = reqwest::Url::parse(value).map_err(|_| {
+    let value = if value.contains("://") {
+        value.to_owned()
+    } else {
+        format!("https://{value}")
+    };
+    let mut url = reqwest::Url::parse(&value).map_err(|_| {
         TrackerError::invalid("base_url must be a valid HTTPS origin").detail("field", BASE_URL)
     })?;
     if url.scheme() != "https"
@@ -886,6 +891,13 @@ mod tests {
         assert_eq!(
             normalize_base_url(" https://ai.example.com/ ").unwrap(),
             "https://ai.example.com"
+        );
+        for value in ["ai.example.com", " ai.example.com/ "] {
+            assert_eq!(normalize_base_url(value).unwrap(), "https://ai.example.com");
+        }
+        assert_eq!(
+            normalize_base_url("localhost:4000").unwrap(),
+            "https://localhost:4000"
         );
         for invalid in [
             "http://ai.example.com",
