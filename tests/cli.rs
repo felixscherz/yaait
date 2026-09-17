@@ -226,3 +226,48 @@ fn debug_shows_the_effective_application_directories() {
         expected.cache_dir().to_string_lossy().as_ref()
     );
 }
+
+#[test]
+fn update_rejects_invalid_versions_with_a_json_failure() {
+    let output = yaait()
+        .args(["--format", "json", "update", "--version", "bad"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stderr.is_empty());
+    let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response["schema_version"], 2);
+    assert_eq!(response["command"], "update");
+    assert_eq!(response["errors"][0]["code"], "invalid_input");
+}
+
+#[test]
+fn unmanaged_update_reports_original_installation_instructions() {
+    let temp = tempfile::tempdir().unwrap();
+    for json in [false, true] {
+        let mut command = yaait();
+        if json {
+            command.args(["--format", "json"]);
+        }
+        let output = command
+            .arg("update")
+            .env("AXOUPDATER_CONFIG_PATH", temp.path())
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        if json {
+            assert!(output.stderr.is_empty());
+            let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(response["errors"][0]["code"], "update_unsupported");
+            assert_eq!(
+                response["errors"][0]["details"]["installation_method"],
+                "unmanaged"
+            );
+        } else {
+            assert!(output.stdout.is_empty());
+            assert!(
+                String::from_utf8_lossy(&output.stderr).contains("original installation method")
+            );
+        }
+    }
+}

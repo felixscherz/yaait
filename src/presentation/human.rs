@@ -28,6 +28,9 @@ pub fn render(envelope: &Envelope) -> Rendered {
         "providers.list" => render_provider_list(&envelope.data),
         "providers.describe" => render_provider_detail(&envelope.data),
         "debug" => render_debug(&envelope.data),
+        "update" => text(&envelope.data, "message")
+            .unwrap_or_default()
+            .to_owned(),
         _ => String::new(),
     };
     let mut stderr = String::new();

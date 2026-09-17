@@ -64,8 +64,20 @@ enum Command {
     Remove(RemoveArgs),
     /// Report remaining budgets for enabled trackers
     Usage(UsageArgs),
+    /// Update yaait to the latest stable release or a specific version
+    Update(UpdateArgs),
     /// Show application data and cache directories
     Debug,
+}
+
+#[derive(Args)]
+struct UpdateArgs {
+    /// Install this release version, including older versions (e.g. 0.2.4)
+    #[arg(long)]
+    version: Option<String>,
+    /// Check the target version without changing the installation
+    #[arg(long)]
+    check: bool,
 }
 
 #[derive(Serialize)]
@@ -181,6 +193,11 @@ async fn main() -> ExitCode {
 
 async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
     let human = cli.human || matches!(cli.format, OutputFormat::Human);
+    if let Command::Update(args) = &cli.command {
+        let (data, warnings) =
+            yaait::infrastructure::update::update(args.version.as_deref(), args.check).await?;
+        return Ok(Envelope::success("update", data, warnings));
+    }
     let paths = AppPaths::discover()?;
     if matches!(&cli.command, Command::Debug) {
         return Ok(Envelope::success(
@@ -297,6 +314,7 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
                 .await?;
             Ok(Envelope::usage(result.data, result.warnings, result.errors))
         }
+        Command::Update(_) => unreachable!("update returns before application initialization"),
         Command::Debug => unreachable!("debug returns before application initialization"),
     }
 }
@@ -425,6 +443,7 @@ fn canonical_name(command: &Command) -> &'static str {
         Command::Disable { .. } => "disable",
         Command::Remove(_) => "remove",
         Command::Usage(_) => "usage",
+        Command::Update(_) => "update",
         Command::Debug => "debug",
     }
 }
