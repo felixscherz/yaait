@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-09-17
+
+### Added
+
+- Show used budget amounts in human reports
+- Default scheme-less LiteLLM URLs to HTTPS
+- Allow explicitly configured HTTP LiteLLM origins
+- Show credential validation progress and seed usage caches
+- Support self-update
+
 ## [0.2.5] - 2026-09-16
 
 ### Documentation
@@ -11,6 +21,7 @@ All notable changes to this project will be documented in this file.
 ### Miscellaneous
 
 - Improve CLI --help
+- Release v0.2.5
 
 ## [0.2.4] - 2026-09-16
 
