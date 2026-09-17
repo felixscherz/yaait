@@ -160,7 +160,7 @@ impl TrackerProvider for LiteLlmProvider {
                     SetupField {
                         key: BASE_URL.into(),
                         label: "LiteLLM base URL".into(),
-                        description: "Origin of the LiteLLM proxy, for example ai.example.com. Defaults to HTTPS.".into(),
+                        description: "Origin of the LiteLLM proxy, for example ai.example.com. Defaults to HTTPS; specify http:// explicitly to use HTTP.".into(),
                         kind: SetupFieldKind::String,
                         required: true,
                         allowed_values: None,
@@ -197,6 +197,7 @@ impl TrackerProvider for LiteLlmProvider {
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
             .ok_or_else(|| TrackerError::invalid("base_url must be a string"))?;
         let base_url = normalize_base_url(&base_url)?;
+        let http = litellm_http_client(&ctx.http, &base_url)?;
         let token = input
             .remove(TOKEN)
             .and_then(|value| value.as_str().map(ToOwned::to_owned))
@@ -209,9 +210,9 @@ impl TrackerProvider for LiteLlmProvider {
                 .unwrap_or(DEFAULT_WINDOW),
         )?;
 
-        let key_info = self.fetch_key_info(&ctx.http, &base_url, &token).await?;
+        let key_info = self.fetch_key_info(&http, &base_url, &token).await?;
         self.fetch_activity(
-            &ctx.http,
+            &http,
             &base_url,
             &token,
             key_info.user_id.as_deref(),
@@ -219,7 +220,7 @@ impl TrackerProvider for LiteLlmProvider {
         )
         .await?;
         if !key_info.has_budget() {
-            self.fetch_user_info(&ctx.http, &base_url, &token, key_info.user_id.as_deref())
+            self.fetch_user_info(&http, &base_url, &token, key_info.user_id.as_deref())
                 .await?;
         }
 
@@ -250,25 +251,24 @@ impl TrackerProvider for LiteLlmProvider {
             return Ok(report);
         }
         let base_url = setting_string(&ctx.tracker.settings, BASE_URL)?;
+        let http = litellm_http_client(&ctx.http, base_url)?;
         let window = ReportingWindow::parse(setting_string(&ctx.tracker.settings, WINDOW)?)?;
         let token = ctx.credentials.get(TOKEN).ok_or_else(|| {
             TrackerError::new("authentication_failed", "tracker credential is missing")
         })?;
-        let key_info = self
-            .fetch_key_info(&ctx.http, base_url, token.expose())
-            .await?;
+        let key_info = self.fetch_key_info(&http, base_url, token.expose()).await?;
         let user_id = key_info
             .user_id
             .as_deref()
             .or_else(|| ctx.tracker.settings.get(USER_ID).and_then(Value::as_str));
         let activity = self
-            .fetch_activity(&ctx.http, base_url, token.expose(), user_id, window)
+            .fetch_activity(&http, base_url, token.expose(), user_id, window)
             .await?;
         let user_info = if key_info.has_budget() {
             None
         } else {
             Some(
-                self.fetch_user_info(&ctx.http, base_url, token.expose(), user_id)
+                self.fetch_user_info(&http, base_url, token.expose(), user_id)
                     .await?,
             )
         };
@@ -343,6 +343,17 @@ fn metric_descriptors() -> Vec<MetricDescriptor> {
     .collect()
 }
 
+fn litellm_http_client(
+    http: &reqwest::Client,
+    base_url: &str,
+) -> Result<reqwest::Client, TrackerError> {
+    if base_url.starts_with("http://") {
+        crate::infrastructure::build_http_client_allow_http()
+    } else {
+        Ok(http.clone())
+    }
+}
+
 fn normalize_base_url(value: &str) -> Result<String, TrackerError> {
     let value = value.trim();
     let value = if value.contains("://") {
@@ -351,9 +362,10 @@ fn normalize_base_url(value: &str) -> Result<String, TrackerError> {
         format!("https://{value}")
     };
     let mut url = reqwest::Url::parse(&value).map_err(|_| {
-        TrackerError::invalid("base_url must be a valid HTTPS origin").detail("field", BASE_URL)
+        TrackerError::invalid("base_url must be a valid HTTP or HTTPS origin")
+            .detail("field", BASE_URL)
     })?;
-    if url.scheme() != "https"
+    if !matches!(url.scheme(), "https" | "http")
         || url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
@@ -362,7 +374,7 @@ fn normalize_base_url(value: &str) -> Result<String, TrackerError> {
         || !matches!(url.path(), "" | "/")
     {
         return Err(
-            TrackerError::invalid("base_url must be a valid HTTPS origin")
+            TrackerError::invalid("base_url must be a valid HTTP or HTTPS origin")
                 .detail("field", BASE_URL),
         );
     }
@@ -887,7 +899,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizes_only_https_origins() {
+    fn normalizes_origins_with_https_by_default() {
         assert_eq!(
             normalize_base_url(" https://ai.example.com/ ").unwrap(),
             "https://ai.example.com"
@@ -899,8 +911,12 @@ mod tests {
             normalize_base_url("localhost:4000").unwrap(),
             "https://localhost:4000"
         );
+        assert_eq!(
+            normalize_base_url("http://localhost:4000/").unwrap(),
+            "http://localhost:4000"
+        );
         for invalid in [
-            "http://ai.example.com",
+            "ftp://ai.example.com",
             "https://user@ai.example.com",
             "https://ai.example.com/ui",
             "https://ai.example.com?token=secret",
@@ -909,6 +925,21 @@ mod tests {
             assert_eq!(error.code, "invalid_input");
             assert_eq!(error.details["field"], BASE_URL);
         }
+    }
+
+    #[tokio::test]
+    async fn explicit_http_origin_can_validate_with_the_https_only_default_client() {
+        let server = MockServer::start_async().await;
+        mock_success(&server).await;
+        let mut input = setup_input();
+        input.insert(BASE_URL.into(), Value::String(server.base_url()));
+        let mut context = setup_context();
+        context.http = crate::infrastructure::build_http_client().unwrap();
+        let prepared = LiteLlmProvider::default()
+            .validate_setup(&context, input)
+            .await
+            .unwrap();
+        assert_eq!(prepared.public_settings[BASE_URL], server.base_url());
     }
 
     #[tokio::test]

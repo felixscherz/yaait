@@ -76,7 +76,8 @@ cargo run -- usage --details
 ```
 
 LiteLLM base URLs accept a domain and optional port without a scheme;
-`ai.example.com` becomes `https://ai.example.com`.
+`ai.example.com` becomes `https://ai.example.com`. To use plaintext HTTP for
+a LiteLLM proxy, explicitly include `http://`, for example `http://localhost:4000`.
 
 Each tracker caches its usage report for five minutes, so repeated `usage`
 calls do not query the provider APIs again. The report's `observed_at`
