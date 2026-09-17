@@ -87,26 +87,24 @@ fn metric_lines(metric: &Value, observed_at: Option<&str>) -> Vec<String> {
     }
     let mut lines = Vec::new();
     let limit = number(metric, "limit");
-    if let Some(remaining) = number(metric, "remaining") {
-        let percent = metric
-            .get("attributes")
-            .and_then(|attributes| attributes.get("percent_remaining"))
-            .and_then(Value::as_f64)
-            .or_else(|| percent_of(remaining, limit));
-        let mut line = format!("remaining: {}", fmt_amount(remaining, unit));
+    let remaining = number(metric, "remaining");
+    let used = number(metric, "used").or_else(|| {
+        limit
+            .zip(remaining)
+            .map(|(limit, remaining)| (limit - remaining).max(0.0))
+    });
+    if let Some(used) = used {
+        let mut line = format!("used: {}", fmt_amount(used, unit));
         if let Some(limit) = limit {
             line.push_str(&format!(" of {}", fmt_amount(limit, unit)));
         }
-        line.push_str(&unit_suffix(unit, limit.unwrap_or(remaining)));
-        if let Some(percent) = percent {
+        line.push_str(&unit_suffix(unit, limit.unwrap_or(used)));
+        if let Some(percent) = percent_of(used, limit) {
             line.push_str(&format!(" ({percent:.1}%)"));
         }
         lines.push(line);
-    }
-    if let Some(used) = number(metric, "used") {
-        let mut line = format!("used: {}", fmt_amount(used, unit));
-        line.push_str(&unit_suffix(unit, used));
-        lines.push(line);
+    } else if let Some(remaining) = remaining {
+        lines.push(format!("remaining: {}", amount_with_unit(remaining, unit)));
     }
     if lines.is_empty()
         && let Some(limit) = limit
@@ -438,7 +436,7 @@ mod tests {
         let rendered = render(&envelope("usage", data));
         assert_eq!(
             rendered.stdout,
-            "copilot-rct:\n    remaining: 4,353 of 10,000 requests (43.5%)\n    resets_at: 2026-10-01 00:00:00Z"
+            "copilot-rct:\n    used: 5,647 of 10,000 requests (56.5%)\n    resets_at: 2026-10-01 00:00:00Z"
         );
         assert!(rendered.stderr.is_empty());
     }
@@ -463,7 +461,7 @@ mod tests {
         let rendered = render(&envelope("usage", data));
         assert_eq!(
             rendered.stdout,
-            "litellm-work:\n    remaining: $32.40 of $40.00 (81.0%)\n    used: $7.60\n    resets_at: 2026-10-01 00:00:00Z"
+            "litellm-work:\n    used: $7.60 of $40.00 (19.0%)\n    resets_at: 2026-10-01 00:00:00Z"
         );
     }
 
@@ -485,7 +483,7 @@ mod tests {
         let rendered = render(&envelope("usage", data));
         assert_eq!(
             rendered.stdout,
-            "litellm-exxeta:\n    remaining: $0.00 of $0.01 (0.0%)\n    used: $9.72"
+            "litellm-exxeta:\n    used: $9.72 of $0.01 (100.0%)"
         );
     }
 
@@ -515,7 +513,7 @@ mod tests {
         let rendered = render(&envelope("usage", data));
         assert_eq!(
             rendered.stdout,
-            "litellm-work:\n    User budget:\n        remaining: $32.40 of $40.00 (81.0%)\n    Total tokens: 152,334 tokens"
+            "litellm-work:\n    User budget:\n        used: $7.60 of $40.00 (19.0%)\n    Total tokens: 152,334 tokens"
         );
     }
 
@@ -539,7 +537,7 @@ mod tests {
         let rendered = render(&envelope("usage", data));
         assert_eq!(
             rendered.stdout,
-            "copilot-rct:\n    remaining: 4,353 of 10,000 requests (43.5%)\n    resets_at: 2026-10-01 00:00:00Z (in 15 days, 14 hours)"
+            "copilot-rct:\n    used: 5,647 of 10,000 requests (56.5%)\n    resets_at: 2026-10-01 00:00:00Z (in 15 days, 14 hours)"
         );
     }
 
