@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use clap::{Args, CommandFactory, Parser, Subcommand, ValueEnum, error::ErrorKind};
+use clap::{Args, Parser, Subcommand, ValueEnum, error::ErrorKind};
 use dialoguer::Select;
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -153,11 +153,11 @@ struct UsageArgs {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    if std::env::args_os().len() == 1 {
-        let _ = Cli::command().print_help();
-        return ExitCode::SUCCESS;
+    let mut args: Vec<_> = std::env::args_os().collect();
+    if args.len() == 1 {
+        args.push("--help".into());
     }
-    let cli = match Cli::try_parse() {
+    let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
         Err(error)
             if matches!(
