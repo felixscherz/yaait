@@ -211,18 +211,24 @@ impl TrackerProvider for LiteLlmProvider {
         )?;
 
         let key_info = self.fetch_key_info(&http, &base_url, &token).await?;
-        self.fetch_activity(
-            &http,
-            &base_url,
-            &token,
-            key_info.user_id.as_deref(),
-            window,
-        )
-        .await?;
-        if !key_info.has_budget() {
-            self.fetch_user_info(&http, &base_url, &token, key_info.user_id.as_deref())
-                .await?;
-        }
+        let activity = self
+            .fetch_activity(
+                &http,
+                &base_url,
+                &token,
+                key_info.user_id.as_deref(),
+                window,
+            )
+            .await?;
+        let user_info = if key_info.has_budget() {
+            None
+        } else {
+            Some(
+                self.fetch_user_info(&http, &base_url, &token, key_info.user_id.as_deref())
+                    .await?,
+            )
+        };
+        let report = into_report(key_info.clone(), user_info, activity, window);
 
         let mut public_settings = Map::new();
         public_settings.insert(BASE_URL.into(), Value::String(base_url));
@@ -236,6 +242,7 @@ impl TrackerProvider for LiteLlmProvider {
         Ok(PreparedSetup {
             public_settings,
             secrets,
+            initial_report: Some(report),
         })
     }
 
@@ -488,7 +495,7 @@ struct KeyInfoResponse {
     info: KeyInfo,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct KeyInfo {
     user_id: Option<String>,
     key_alias: Option<String>,
@@ -954,6 +961,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(prepared.public_settings[BASE_URL], "https://ai.example.com");
+        crate::validate_report(prepared.initial_report.as_ref().unwrap()).unwrap();
         assert_eq!(prepared.public_settings[WINDOW], DEFAULT_WINDOW);
         assert_eq!(prepared.public_settings[USER_ID], "user-7");
         assert_eq!(prepared.public_settings[KEY_ALIAS], "work-key");

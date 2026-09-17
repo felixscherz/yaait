@@ -75,6 +75,8 @@ pub type SetupInput = Map<String, Value>;
 pub struct PreparedSetup {
     pub public_settings: Map<String, Value>,
     pub secrets: SecretMap,
+    /// Usage fetched during validation, persisted only after setup succeeds.
+    pub initial_report: Option<UsageReport>,
 }
 
 /// How a tracker should treat its cached usage report during `collect`.

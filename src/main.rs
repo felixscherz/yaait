@@ -180,6 +180,7 @@ async fn main() -> ExitCode {
 }
 
 async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
+    let human = cli.human || matches!(cli.format, OutputFormat::Human);
     let paths = AppPaths::discover()?;
     if matches!(&cli.command, Command::Debug) {
         return Ok(Envelope::success(
@@ -210,6 +211,9 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
             let provider_id = ProviderId::from_str(&args.provider)?;
             let descriptor = app.describe_provider(&provider_id)?.data.provider;
             let input = complete_input(&descriptor, read_input(args.input)?)?;
+            if human {
+                eprintln!("Validating credentials...");
+            }
             Ok(envelope(
                 "add",
                 app.add(AddRequest {
@@ -235,6 +239,9 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
                 .data
                 .provider;
             let input = complete_input(&descriptor, read_input(args.input)?)?;
+            if human {
+                eprintln!("Validating credentials...");
+            }
             Ok(envelope("setup", app.setup(&id, input).await?))
         }
         Command::Enable { tracker_id } => {

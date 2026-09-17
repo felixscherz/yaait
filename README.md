@@ -79,6 +79,10 @@ LiteLLM base URLs accept a domain and optional port without a scheme;
 `ai.example.com` becomes `https://ai.example.com`. To use plaintext HTTP for
 a LiteLLM proxy, explicitly include `http://`, for example `http://localhost:4000`.
 
+Adding or reconfiguring a tracker displays `Validating credentials...` on stderr
+in human mode. Successful validation fills that tracker's usage cache, so the
+first `usage` call can reuse the fetched data.
+
 Each tracker caches its usage report for five minutes, so repeated `usage`
 calls do not query the provider APIs again. The report's `observed_at`
 timestamp reflects when the data was actually fetched. Pass `--refresh` to

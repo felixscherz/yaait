@@ -184,6 +184,9 @@ impl App {
                     .tracker(request.id.to_string())
                     .provider(request.provider.to_string())
             })?;
+        if let Some(report) = &prepared.initial_report {
+            validate_report(report)?;
+        }
         let now = (self.clock)();
         let manifest = TrackerManifest {
             schema_version: 1,
@@ -198,6 +201,9 @@ impl App {
             extensions: BTreeMap::new(),
         };
         self.registry.add(&manifest, &prepared.secrets)?;
+        if let Some(report) = &prepared.initial_report {
+            crate::ReportCache::new(context.cache_dir).store(report);
+        }
         Ok(ServiceResult::clean(TrackerData {
             tracker: (&manifest).into(),
         }))
@@ -261,9 +267,15 @@ impl App {
                     .tracker(id.to_string())
                     .provider(manifest.provider.to_string())
             })?;
+        if let Some(report) = &prepared.initial_report {
+            validate_report(report)?;
+        }
         manifest.settings = prepared.public_settings;
         manifest.updated_at = (self.clock)();
         self.registry.replace_setup(&manifest, &prepared.secrets)?;
+        if let Some(report) = &prepared.initial_report {
+            crate::ReportCache::new(context.cache_dir).store(report);
+        }
         Ok(ServiceResult::clean(TrackerData {
             tracker: (&manifest).into(),
         }))
@@ -467,6 +479,12 @@ mod tests {
             Ok(PreparedSetup {
                 public_settings: Map::new(),
                 secrets,
+                initial_report: Some(UsageReport {
+                    observed_at: Utc::now(),
+                    identity: None,
+                    metrics: vec![],
+                    attributes: Map::new(),
+                }),
             })
         }
 
@@ -546,6 +564,55 @@ mod tests {
         assert_eq!(result.data.trackers[0].id.as_str(), "personal");
         assert_eq!(result.errors.len(), 1);
         assert_eq!(result.errors[0].tracker_id.as_deref(), Some("work"));
+    }
+
+    #[tokio::test]
+    async fn setup_caches_reports_independently_and_failed_add_preserves_the_cache() {
+        let temp = tempfile::tempdir().unwrap();
+        let registry = FileRegistry::new(crate::AppPaths::isolated(temp.path()));
+        let mut app = App::new(registry.clone()).unwrap();
+        app.register_provider(Arc::new(FakeProvider::default()));
+        let add = |id: &str| AddRequest {
+            id: id.parse().unwrap(),
+            provider: "fake".parse().unwrap(),
+            name: None,
+            description: None,
+            input: input("good"),
+        };
+        app.add(add("personal")).await.unwrap();
+        app.add(add("work")).await.unwrap();
+        let personal =
+            crate::ReportCache::new(registry.paths().tracker_cache(&"personal".parse().unwrap()));
+        let work =
+            crate::ReportCache::new(registry.paths().tracker_cache(&"work".parse().unwrap()));
+        let original = personal
+            .fresh(crate::DEFAULT_CACHE_TTL, Utc::now())
+            .unwrap();
+        let work_report = work.fresh(crate::DEFAULT_CACHE_TTL, Utc::now()).unwrap();
+        assert_eq!(
+            app.add(add("personal")).await.unwrap_err().code,
+            "tracker_exists"
+        );
+        assert_eq!(
+            personal
+                .fresh(crate::DEFAULT_CACHE_TTL, Utc::now())
+                .unwrap(),
+            original
+        );
+        app.setup(&"personal".parse().unwrap(), input("new"))
+            .await
+            .unwrap();
+        assert_ne!(
+            personal
+                .fresh(crate::DEFAULT_CACHE_TTL, Utc::now())
+                .unwrap()
+                .observed_at,
+            original.observed_at
+        );
+        assert_eq!(
+            work.fresh(crate::DEFAULT_CACHE_TTL, Utc::now()).unwrap(),
+            work_report
+        );
     }
 
     #[tokio::test]

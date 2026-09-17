@@ -133,7 +133,7 @@ impl TrackerProvider for GitHubCopilotProvider {
             .map(normalize_enterprise_url)
             .transpose()?;
         let endpoint = self.endpoint(enterprise_url.as_deref())?;
-        self.fetch(&ctx.http, &endpoint, &token).await?;
+        let report = self.fetch(&ctx.http, &endpoint, &token).await?;
         let mut public_settings = Map::new();
         if let Some(enterprise_url) = enterprise_url {
             public_settings.insert(ENTERPRISE_URL.into(), Value::String(enterprise_url));
@@ -143,6 +143,7 @@ impl TrackerProvider for GitHubCopilotProvider {
         Ok(PreparedSetup {
             public_settings,
             secrets,
+            initial_report: Some(report),
         })
     }
 
@@ -502,6 +503,7 @@ mod tests {
 
         let prepared = provider.validate_setup(&context, input).await.unwrap();
 
+        crate::validate_report(prepared.initial_report.as_ref().unwrap()).unwrap();
         request.assert_async().await;
         assert_eq!(prepared.secrets["token"].expose(), "account-specific-token");
         assert_eq!(
