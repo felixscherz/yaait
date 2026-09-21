@@ -15,7 +15,8 @@ use yaait::{
     application::{RemovedData, ServiceResult},
     presentation::{Envelope, human},
     providers::{
-        ClaudeCodeProvider, CodexProvider, DeepSeekProvider, GitHubCopilotProvider, LiteLlmProvider,
+        ClaudeCodeProvider, CodexProvider, DeepSeekProvider, GitHubCopilotProvider,
+        LiteLlmProvider, OpenRouterProvider,
     },
 };
 
