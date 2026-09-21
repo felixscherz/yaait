@@ -69,6 +69,7 @@ Run `yaait providers describe <PROVIDER_ID>` for setup requirements, or
 | --- | --- | --- |
 | `deepseek` | API account balances in USD and CNY | DeepSeek API key |
 | `github-copilot` | Copilot request quota and reset time | GitHub token; supports GitHub.com and GitHub Enterprise |
+| `openrouter` | API key spend and remaining key budget in USD | OpenRouter API key |
 | `litellm` | Spend, tokens, requests, and available key or user budget | Proxy URL and LiteLLM virtual key |
 
 DeepSeek uses the [user balance endpoint](https://api-docs.deepseek.com/api/get-user-balance).
@@ -83,6 +84,21 @@ This tracks API credit, not usage in the DeepSeek chat application.
 ```sh
 printf '%s' '{"token":"…"}' | yaait add --provider deepseek --input - deepseek-personal
 printf '%s' '{"token":"…"}' | yaait add --provider deepseek --input - deepseek-work
+```
+
+OpenRouter uses the [current key endpoint](https://openrouter.ai/docs/api/api-reference/api-keys/get-current-key).
+The summary shows lifetime spend and the key budget when available.
+Human output shows the used share; JSON includes the remaining amount.
+`--details` adds daily, weekly, monthly, and external BYOK spend when returned.
+The key budget is not the account credit balance; having budget left does not
+prove the account has funds. A missing limit stays unknown. Reset periods come
+from the API, but no reset timestamp is inferred. Key labels can contain key
+fragments, so reports omit them and retain tracker IDs and available creator
+and organization IDs.
+
+```sh
+printf '%s' '{"token":"…"}' | yaait add --provider openrouter --input - openrouter-personal
+printf '%s' '{"token":"…"}' | yaait add --provider openrouter --input - openrouter-work
 ```
 
 For GitHub Enterprise, choose the Enterprise deployment during setup and enter

@@ -9,6 +9,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum, error::ErrorKind};
 use dialoguer::Select;
 use serde::Serialize;
 use serde_json::{Map, Value};
+use yaait::providers::OpenRouterProvider;
 use yaait::{
     AddRequest, App, AppPaths, CachePolicy, FileRegistry, ProviderDescriptor, ProviderId,
     SetupFieldKind, SetupInput, TrackerError, TrackerId, UsageOptions,
@@ -215,6 +216,7 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
     app.register_provider(Arc::new(GitHubCopilotProvider::default()));
     app.register_provider(Arc::new(LiteLlmProvider::default()));
     app.register_provider(Arc::new(DeepSeekProvider::default()));
+    app.register_provider(Arc::new(OpenRouterProvider::default()));
 
     match cli.command {
         Command::Providers(args) => match args.command {

@@ -6,3 +6,5 @@ pub use litellm::LiteLlmProvider;
 
 mod deepseek;
 pub use deepseek::DeepSeekProvider;
+mod openrouter;
+pub use openrouter::OpenRouterProvider;
