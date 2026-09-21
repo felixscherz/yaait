@@ -67,8 +67,23 @@ Run `yaait providers describe <PROVIDER_ID>` for setup requirements, or
 
 | Provider ID | Reports | Setup |
 | --- | --- | --- |
+| `deepseek` | API account balances in USD and CNY | DeepSeek API key |
 | `github-copilot` | Copilot request quota and reset time | GitHub token; supports GitHub.com and GitHub Enterprise |
 | `litellm` | Spend, tokens, requests, and available key or user budget | Proxy URL and LiteLLM virtual key |
+
+DeepSeek uses the [user balance endpoint](https://api-docs.deepseek.com/api/get-user-balance).
+The summary shows available account balances separately for each currency.
+`--details` adds granted and topped-up balances when returned. JSON includes
+`is_available`, the provider's indication that the balance permits API calls.
+The API does not report spending limits, reset times, or account identity.
+Use distinct tracker names for different accounts. Keys for the same account
+report the same account balance, so do not add those balances together.
+This tracks API credit, not usage in the DeepSeek chat application.
+
+```sh
+printf '%s' '{"token":"…"}' | yaait add --provider deepseek --input - deepseek-personal
+printf '%s' '{"token":"…"}' | yaait add --provider deepseek --input - deepseek-work
+```
 
 For GitHub Enterprise, choose the Enterprise deployment during setup and enter
 its domain or HTTPS URL.

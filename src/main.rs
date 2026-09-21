@@ -14,7 +14,7 @@ use yaait::{
     SetupFieldKind, SetupInput, TrackerError, TrackerId, UsageOptions,
     application::{RemovedData, ServiceResult},
     presentation::{Envelope, human},
-    providers::{GitHubCopilotProvider, LiteLlmProvider},
+    providers::{DeepSeekProvider, GitHubCopilotProvider, LiteLlmProvider},
 };
 
 #[derive(Parser)]
@@ -214,6 +214,7 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
     let mut app = App::new(registry)?;
     app.register_provider(Arc::new(GitHubCopilotProvider::default()));
     app.register_provider(Arc::new(LiteLlmProvider::default()));
+    app.register_provider(Arc::new(DeepSeekProvider::default()));
 
     match cli.command {
         Command::Providers(args) => match args.command {
