@@ -1,0 +1,18 @@
+site_name: yaait
+site_url: https://felixscherz.github.io/yaait/
+site_description: Usage and remaining budgets across AI providers
+repo_url: https://github.com/felixscherz/yaait
+theme:
+  name: mkdocs
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Usage: usage.md
+  - Providers:
+      - Claude Code: providers/claude-code.md
+      - Codex: providers/codex.md
+      - DeepSeek: providers/deepseek.md
+      - GitHub Copilot: providers/github-copilot.md
+      - LiteLLM: providers/litellm.md
+      - OpenRouter: providers/openrouter.md
+  - Updating: updating.md

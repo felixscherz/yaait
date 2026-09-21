@@ -32,3 +32,17 @@ Before submitting a change, agents and contributors must run `cargo test` and
 `pre-commit run --all-files`. All pre-commit hooks must pass before the work is
 submitted. If a hook modifies a file, review the change and rerun the hooks
 until they pass.
+
+## Documentation
+
+Edit the Markdown files in `docs/` and update `mkdocs.yml` when adding a page.
+Preview the site locally with:
+
+```sh
+python3 -m pip install -r docs-requirements.txt
+python3 -m mkdocs serve
+```
+
+Run `python3 -m mkdocs build --strict` before submitting documentation changes.
+The documentation workflow builds pull requests and publishes `main` to GitHub
+Pages. Set the repository's Pages build source to GitHub Actions.
