@@ -67,10 +67,11 @@ Run `yaait providers describe <PROVIDER_ID>` for setup requirements, or
 
 | Provider ID | Reports | Setup |
 | --- | --- | --- |
+| `claude-code` | Subscription windows, reset times, and extra usage budget | OAuth token or explicit credential-file path |
 | `deepseek` | API account balances in USD and CNY | DeepSeek API key |
 | `github-copilot` | Copilot request quota and reset time | GitHub token; supports GitHub.com and GitHub Enterprise |
-| `openrouter` | API key spend and remaining key budget in USD | OpenRouter API key |
 | `litellm` | Spend, tokens, requests, and available key or user budget | Proxy URL and LiteLLM virtual key |
+| `openrouter` | API key spend and remaining key budget in USD | OpenRouter API key |
 
 DeepSeek uses the [user balance endpoint](https://api-docs.deepseek.com/api/get-user-balance).
 The summary shows available account balances separately for each currency.
@@ -119,11 +120,12 @@ yaait add --provider codex codex-personal
 
 Interactive setup asks you to choose an auth.json file or an access token, then
 prompts for that credential. Supply exactly one of `token` or `credential_file`.
-Tokens must be subscription
-OAuth access tokens, not API keys. For noninteractive setup, pass a JSON object
-with `"credential_file":"/absolute/path/to/auth.json"` through `--input -`.
+Tokens must be subscription OAuth access tokens, not API keys. For
+noninteractive setup, pass a JSON object with
+`"credential_file":"/absolute/path/to/auth.json"` through `--input -`.
 Interactive setup suggests an existing credential file from
 `$CODEX_HOME/auth.json`, or `~/.codex/auth.json`.
+
 Press Enter to use the suggested file, or enter another subscription's absolute
 path. The selected path is stored in that tracker; usage collection never
 switches to a newly discovered file. Noninteractive JSON setup still requires
@@ -144,6 +146,44 @@ limit of 100. Windows are not added together. Missing windows remain unknown.
 The summary also includes the credit balance when available. Credits have no
 assumed currency; missing balances remain unknown. Detailed output includes
 code-review usage.
+
+### Claude Code subscriptions
+
+```sh
+yaait add --provider claude-code claude-code-personal
+```
+
+Supply exactly one of `token` or `credential_file`. Tokens must be subscription
+OAuth access tokens, not API keys. For noninteractive setup, pass a JSON object
+with `"credential_file":"/absolute/path/to/.credentials.json"` through
+`--input -`.
+Interactive setup suggests an existing credential file from
+`$CLAUDE_CONFIG_DIR/.credentials.json`, or `~/.claude/.credentials.json`.
+
+Press Enter to use the suggested file, or enter another subscription's absolute
+path. The selected path is stored in that tracker; usage collection never
+switches to a newly discovered file. Noninteractive JSON setup still requires
+an explicit credential file or token.
+
+Each tracker can use a different file or token. Files are read on each fresh
+fetch so refreshed tokens from the upstream CLI take effect. yaait does not
+refresh tokens itself. Failed token authentication produces a tracker-specific
+error explaining how to sign in with `claude auth login` and retry
+`yaait usage --refresh`. A failed refresh does not return cached usage as fresh
+data. For supplied tokens, update the tracker with `yaait setup <TRACKER_ID>`.
+Claude Code reads `claudeAiOauth.accessToken` and the available subscription
+type. On macOS, Claude Code may store credentials in Keychain; supply a token or
+a private credential file instead. Keep each file tied to one subscription.
+
+Usage is measured in percentage points of each independent window, with a
+limit of 100. Windows are not added together. Missing windows remain unknown.
+The summary also includes enabled monthly extra usage when available. Amounts
+identified as USD are converted from cents to dollars. Without a reported
+currency, amounts retain their credit units. Missing usage or limits remain
+unknown; disabled extra usage is omitted. Utilization is interpreted as a
+percentage, including values below one. Detailed output includes available
+per-model and OAuth-app weekly windows.
+
 These subscription endpoints are not a stable public API and may change.
 
 ## Usage and output

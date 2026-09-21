@@ -9,13 +9,14 @@ use clap::{Args, Parser, Subcommand, ValueEnum, error::ErrorKind};
 use dialoguer::Select;
 use serde::Serialize;
 use serde_json::{Map, Value};
-use yaait::providers::OpenRouterProvider;
 use yaait::{
     AddRequest, App, AppPaths, CachePolicy, FileRegistry, ProviderDescriptor, ProviderId,
     SetupFieldKind, SetupInput, TrackerError, TrackerId, UsageOptions,
     application::{RemovedData, ServiceResult},
     presentation::{Envelope, human},
-    providers::{CodexProvider, DeepSeekProvider, GitHubCopilotProvider, LiteLlmProvider},
+    providers::{
+        ClaudeCodeProvider, CodexProvider, DeepSeekProvider, GitHubCopilotProvider, LiteLlmProvider,
+    },
 };
 
 #[derive(Parser)]
@@ -218,6 +219,7 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
     app.register_provider(Arc::new(DeepSeekProvider::default()));
     app.register_provider(Arc::new(OpenRouterProvider::default()));
     app.register_provider(Arc::new(CodexProvider::default()));
+    app.register_provider(Arc::new(ClaudeCodeProvider::default()));
 
     match cli.command {
         Command::Providers(args) => match args.command {
@@ -380,17 +382,35 @@ fn complete_input(
             }
         }
     }
-    let selected_credential = if descriptor.id.as_str() == "codex"
-        && !input.contains_key("token")
+    let selected_credential = if !input.contains_key("token")
         && !input.contains_key("credential_file")
     {
-        let selection = Select::new()
-            .with_prompt("Select Codex credential source")
-            .items(["Codex auth.json file", "Subscription access token"])
-            .default(0)
-            .interact()
-            .map_err(|_| TrackerError::invalid("could not read Codex credential source"))?;
-        Some(codex_credential_field(selection)?)
+        match descriptor.id.as_str() {
+            "codex" => {
+                let selection = Select::new()
+                    .with_prompt("Select Codex credential source")
+                    .items(["Codex auth.json file", "Subscription access token"])
+                    .default(0)
+                    .interact()
+                    .map_err(|_| TrackerError::invalid("could not read Codex credential source"))?;
+                Some(codex_credential_field(selection)?)
+            }
+            "claude-code" => {
+                let selection = Select::new()
+                    .with_prompt("Select Claude Code credential source")
+                    .items([
+                        "Claude Code .credentials.json file",
+                        "Subscription access token",
+                    ])
+                    .default(0)
+                    .interact()
+                    .map_err(|_| {
+                        TrackerError::invalid("could not read Claude Code credential source")
+                    })?;
+                Some(claude_credential_field(selection)?)
+            }
+            _ => None,
+        }
     } else {
         None
     };
@@ -409,10 +429,12 @@ fn complete_input(
             rpassword::prompt_password(format!("{}: ", field.label))
                 .map_err(|_| TrackerError::invalid("could not read setup input"))?
         } else {
-            let suggested = if field.key == "credential_file" {
-                CodexProvider::discover_credential_file()
-            } else {
-                None
+            let suggested = match (descriptor.id.as_str(), field.key.as_str()) {
+                ("codex", "credential_file") => CodexProvider::discover_credential_file(),
+                ("claude-code", "credential_file") => {
+                    ClaudeCodeProvider::discover_credential_file()
+                }
+                _ => None,
             };
             if let Some(path) = &suggested {
                 eprint!(
@@ -473,6 +495,16 @@ fn codex_credential_field(selection: usize) -> Result<&'static str, TrackerError
         0 => Ok("credential_file"),
         1 => Ok("token"),
         _ => Err(TrackerError::invalid("invalid Codex credential source")),
+    }
+}
+
+fn claude_credential_field(selection: usize) -> Result<&'static str, TrackerError> {
+    match selection {
+        0 => Ok("credential_file"),
+        1 => Ok("token"),
+        _ => Err(TrackerError::invalid(
+            "invalid Claude Code credential source",
+        )),
     }
 }
 
@@ -573,6 +605,13 @@ mod tests {
         assert_eq!(codex_credential_field(0).unwrap(), "credential_file");
         assert_eq!(codex_credential_field(1).unwrap(), "token");
         assert!(codex_credential_field(2).is_err());
+    }
+
+    #[test]
+    fn claude_source_selection_prompts_for_one_credential() {
+        assert_eq!(claude_credential_field(0).unwrap(), "credential_file");
+        assert_eq!(claude_credential_field(1).unwrap(), "token");
+        assert!(claude_credential_field(2).is_err());
     }
 
     #[test]
