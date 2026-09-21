@@ -297,7 +297,6 @@ fn deepseek_setup_is_discoverable() {
     );
 }
 
-
 #[test]
 fn openrouter_setup_is_discoverable() {
     let output = yaait()

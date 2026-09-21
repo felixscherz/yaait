@@ -15,7 +15,7 @@ use yaait::{
     SetupFieldKind, SetupInput, TrackerError, TrackerId, UsageOptions,
     application::{RemovedData, ServiceResult},
     presentation::{Envelope, human},
-    providers::{DeepSeekProvider, GitHubCopilotProvider, LiteLlmProvider, OpenRouterProvider},
+    providers::{DeepSeekProvider, GitHubCopilotProvider, LiteLlmProvider},
 };
 
 #[derive(Parser)]
