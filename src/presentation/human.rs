@@ -357,6 +357,7 @@ fn group_thousands(value: i64) -> String {
 fn unit_suffix(unit: &str, basis: f64) -> String {
     match unit {
         "" | "usd" => String::new(),
+        "cny" => " CNY".into(),
         unit if basis == 1.0 || unit.ends_with('s') => format!(" {unit}"),
         unit => format!(" {unit}s"),
     }

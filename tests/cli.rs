@@ -19,8 +19,15 @@ fn provider_discovery_uses_the_versioned_json_envelope() {
     assert_eq!(response["schema_version"], 2);
     assert_eq!(response["command"], "providers.list");
     assert_eq!(response["ok"], true);
-    assert_eq!(response["data"]["providers"][0]["id"], "github-copilot");
-    assert_eq!(response["data"]["providers"][1]["id"], "litellm");
+    let ids: Vec<_> = response["data"]["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|provider| provider["id"].as_str().unwrap())
+        .collect();
+    for expected in ["github-copilot", "litellm", "deepseek"] {
+        assert!(ids.contains(&expected));
+    }
 }
 
 #[test]
@@ -270,4 +277,22 @@ fn unmanaged_update_reports_original_installation_instructions() {
             );
         }
     }
+}
+
+#[test]
+fn deepseek_setup_is_discoverable() {
+    let output = yaait()
+        .args(["--format", "json", "providers", "describe", "deepseek"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(response.to_string().contains("token"));
+    assert!(response.to_string().contains("secret"));
+    let output = yaait().args(["providers", "list"]).output().unwrap();
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("deepseek:")
+    );
 }
