@@ -15,7 +15,7 @@ use yaait::{
     SetupFieldKind, SetupInput, TrackerError, TrackerId, UsageOptions,
     application::{RemovedData, ServiceResult},
     presentation::{Envelope, human},
-    providers::{DeepSeekProvider, GitHubCopilotProvider, LiteLlmProvider},
+    providers::{CodexProvider, DeepSeekProvider, GitHubCopilotProvider, LiteLlmProvider},
 };
 
 #[derive(Parser)]
@@ -217,6 +217,7 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
     app.register_provider(Arc::new(LiteLlmProvider::default()));
     app.register_provider(Arc::new(DeepSeekProvider::default()));
     app.register_provider(Arc::new(OpenRouterProvider::default()));
+    app.register_provider(Arc::new(CodexProvider::default()));
 
     match cli.command {
         Command::Providers(args) => match args.command {
@@ -379,11 +380,28 @@ fn complete_input(
             }
         }
     }
+    let selected_credential = if descriptor.id.as_str() == "codex"
+        && !input.contains_key("token")
+        && !input.contains_key("credential_file")
+    {
+        let selection = Select::new()
+            .with_prompt("Select Codex credential source")
+            .items(["Codex auth.json file", "Subscription access token"])
+            .default(0)
+            .interact()
+            .map_err(|_| TrackerError::invalid("could not read Codex credential source"))?;
+        Some(codex_credential_field(selection)?)
+    } else {
+        None
+    };
     let missing_fields = descriptor
         .setup
         .fields
         .iter()
-        .filter(|field| field.required && !input.contains_key(&field.key))
+        .filter(|field| {
+            (field.required || selected_credential == Some(field.key.as_str()))
+                && !input.contains_key(&field.key)
+        })
         .cloned()
         .collect::<Vec<_>>();
     for field in missing_fields {
@@ -391,13 +409,34 @@ fn complete_input(
             rpassword::prompt_password(format!("{}: ", field.label))
                 .map_err(|_| TrackerError::invalid("could not read setup input"))?
         } else {
-            eprint!("{}: ", field.label);
+            let suggested = if field.key == "credential_file" {
+                CodexProvider::discover_credential_file()
+            } else {
+                None
+            };
+            if let Some(path) = &suggested {
+                eprint!(
+                    "{} [{}] (Enter to use, or enter another subscription's path): ",
+                    field.label,
+                    path.display()
+                );
+            } else {
+                eprint!("{}: ", field.label);
+            }
             io::stderr().flush().ok();
             let mut value = String::new();
             io::stdin()
                 .read_line(&mut value)
                 .map_err(|_| TrackerError::invalid("could not read setup input"))?;
-            value.trim_end().to_owned()
+            if value.trim().is_empty()
+                && let Some(path) = suggested
+            {
+                path.to_str()
+                    .ok_or_else(|| TrackerError::invalid("credential path is not valid UTF-8"))?
+                    .to_owned()
+            } else {
+                value.trim_end().to_owned()
+            }
         };
         let value = if field.kind == SetupFieldKind::Boolean {
             Value::Bool(raw.parse::<bool>().map_err(|_| {
@@ -409,7 +448,32 @@ fn complete_input(
         };
         input.insert(field.key.clone(), value);
     }
+    if descriptor.id.as_str() == "codex"
+        && input.contains_key("token")
+        && !input.contains_key("account_id")
+    {
+        eprint!("ChatGPT account/workspace ID (optional, press Enter to skip): ");
+        io::stderr().flush().ok();
+        let mut account = String::new();
+        io::stdin()
+            .read_line(&mut account)
+            .map_err(|_| TrackerError::invalid("could not read setup input"))?;
+        if !account.trim().is_empty() {
+            input.insert(
+                "account_id".into(),
+                Value::String(account.trim().to_owned()),
+            );
+        }
+    }
     Ok(input)
+}
+
+fn codex_credential_field(selection: usize) -> Result<&'static str, TrackerError> {
+    match selection {
+        0 => Ok("credential_file"),
+        1 => Ok("token"),
+        _ => Err(TrackerError::invalid("invalid Codex credential source")),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -503,6 +567,13 @@ fn emit(envelope: &Envelope, format: OutputFormat, pretty: bool) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn codex_source_selection_prompts_for_one_credential() {
+        assert_eq!(codex_credential_field(0).unwrap(), "credential_file");
+        assert_eq!(codex_credential_field(1).unwrap(), "token");
+        assert!(codex_credential_field(2).is_err());
+    }
 
     #[test]
     fn maps_interactive_github_deployment_choices() {
