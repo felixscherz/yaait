@@ -25,7 +25,13 @@ fn provider_discovery_uses_the_versioned_json_envelope() {
         .iter()
         .map(|provider| provider["id"].as_str().unwrap())
         .collect();
-    for expected in ["github-copilot", "litellm", "deepseek", "openrouter"] {
+    for expected in [
+        "github-copilot",
+        "litellm",
+        "deepseek",
+        "openrouter",
+        "codex",
+    ] {
         assert!(ids.contains(&expected));
     }
 }

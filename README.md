@@ -111,6 +111,41 @@ information, and aggregated spend. Some deployments require the
 `get_spend_routes` permission. Browser and SSO session credentials are not
 supported.
 
+### Codex subscriptions
+
+```sh
+yaait add --provider codex codex-personal
+```
+
+Interactive setup asks you to choose an auth.json file or an access token, then
+prompts for that credential. Supply exactly one of `token` or `credential_file`.
+Tokens must be subscription
+OAuth access tokens, not API keys. For noninteractive setup, pass a JSON object
+with `"credential_file":"/absolute/path/to/auth.json"` through `--input -`.
+Interactive setup suggests an existing credential file from
+`$CODEX_HOME/auth.json`, or `~/.codex/auth.json`.
+Press Enter to use the suggested file, or enter another subscription's absolute
+path. The selected path is stored in that tracker; usage collection never
+switches to a newly discovered file. Noninteractive JSON setup still requires
+an explicit credential file or token.
+
+Each tracker can use a different file or token. Files are read on each fresh
+fetch so refreshed tokens from the upstream CLI take effect. yaait does not
+refresh tokens itself. If a fresh request rejects an expired or invalid token,
+yaait reports an `authentication_failed` error for that tracker and does not
+return its cached usage as fresh data. Use `codex login` for the affected
+subscription, then retry `yaait usage --refresh`. For a supplied token, replace
+it with `yaait setup <TRACKER_ID>`.
+Codex reads `tokens.access_token` and `tokens.account_id` and pins the account
+during setup. For a token, also supply `account_id` when selecting a workspace.
+
+Usage is measured in percentage points of each independent window, with a
+limit of 100. Windows are not added together. Missing windows remain unknown.
+The summary also includes the credit balance when available. Credits have no
+assumed currency; missing balances remain unknown. Detailed output includes
+code-review usage.
+These subscription endpoints are not a stable public API and may change.
+
 ## Usage and output
 
 ```sh
