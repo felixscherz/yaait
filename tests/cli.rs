@@ -25,7 +25,7 @@ fn provider_discovery_uses_the_versioned_json_envelope() {
         .iter()
         .map(|provider| provider["id"].as_str().unwrap())
         .collect();
-    for expected in ["github-copilot", "litellm", "deepseek"] {
+    for expected in ["github-copilot", "litellm", "deepseek", "openrouter"] {
         assert!(ids.contains(&expected));
     }
 }
@@ -294,5 +294,24 @@ fn deepseek_setup_is_discoverable() {
         String::from_utf8(output.stdout)
             .unwrap()
             .contains("deepseek:")
+    );
+}
+
+
+#[test]
+fn openrouter_setup_is_discoverable() {
+    let output = yaait()
+        .args(["--format", "json", "providers", "describe", "openrouter"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert!(response.to_string().contains("token"));
+    assert!(response.to_string().contains("secret"));
+    let output = yaait().args(["providers", "list"]).output().unwrap();
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("openrouter:")
     );
 }
