@@ -53,6 +53,55 @@ fn invalid_cli_arguments_are_json_and_fail() {
 }
 
 #[test]
+fn add_without_tracker_id_names_the_missing_argument_for_every_provider() {
+    for provider in [
+        "claude-code",
+        "codex",
+        "deepseek",
+        "github-copilot",
+        "litellm",
+        "openrouter",
+    ] {
+        let output = yaait()
+            .args(["--format", "json", "add", "--provider", provider])
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{provider}");
+        assert!(output.stderr.is_empty(), "{provider}");
+        let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(response["command"], "cli", "{provider}");
+        assert_eq!(response["errors"][0]["code"], "invalid_input", "{provider}");
+        assert!(
+            response["errors"][0]["message"]
+                .as_str()
+                .unwrap()
+                .contains("<TRACKER_ID>")
+        );
+    }
+}
+
+#[test]
+fn human_add_error_identifies_the_missing_tracker_id() {
+    let output = yaait()
+        .args(["add", "--provider", "deepseek"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("<TRACKER_ID>"), "{stderr}");
+}
+
+#[test]
+fn missing_add_provider_reports_the_required_argument() {
+    let output = yaait().args(["add"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("--provider <PROVIDER>"), "{stderr}");
+}
+
+#[test]
 fn help_remains_plain_text() {
     let output = yaait().arg("--help").output().unwrap();
     assert!(output.status.success());

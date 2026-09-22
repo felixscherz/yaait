@@ -117,7 +117,7 @@ struct AddArgs {
     /// Read provider setup as a JSON object from stdin with --input -
     #[arg(long)]
     input: Option<String>,
-    /// Unique tracker ID, such as copilot-personal or copilot-work
+    /// Unique tracker ID, such as deepseek-personal or deepseek-work
     tracker_id: String,
 }
 
@@ -173,8 +173,13 @@ async fn main() -> ExitCode {
         }
         Err(error) => {
             let raw = error.to_string();
-            let line = raw.lines().next().unwrap_or("invalid arguments");
-            let message = line.strip_prefix("error: ").unwrap_or(line);
+            let message = raw
+                .split("\nUsage:")
+                .next()
+                .unwrap_or("invalid arguments")
+                .trim();
+            let message = message.strip_prefix("error: ").unwrap_or(message);
+            let message = message.split_whitespace().collect::<Vec<_>>().join(" ");
             let envelope = Envelope::failure("cli", TrackerError::invalid(message));
             return emit(&envelope, requested_format(), false);
         }
