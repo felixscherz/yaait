@@ -358,6 +358,7 @@ fn unit_suffix(unit: &str, basis: f64) -> String {
     match unit {
         "" | "usd" => String::new(),
         "cny" => " CNY".into(),
+        "percent" => " percent".into(),
         unit if basis == 1.0 || unit.ends_with('s') => format!(" {unit}"),
         unit => format!(" {unit}s"),
     }
@@ -443,6 +444,28 @@ mod tests {
             "copilot-rct:\n    used: 5,647 of 10,000 requests (56.5%)\n    resets_at: 2026-10-01 00:00:00Z"
         );
         assert!(rendered.stderr.is_empty());
+    }
+
+    #[test]
+    fn usage_renders_percentage_quota_with_invariant_unit() {
+        let data = json!({"trackers": [{
+            "id": "codex-personal",
+            "provider": "codex",
+            "metrics": [{
+                "id": "primary",
+                "label": "5-hour limit",
+                "kind": "quota",
+                "unit": "percent",
+                "used": 3.0,
+                "remaining": 97.0,
+                "limit": 100.0
+            }]
+        }]});
+        let rendered = render(&envelope("usage", data));
+        assert_eq!(
+            rendered.stdout,
+            "codex-personal:\n    used: 3 of 100 percent (3.0%)"
+        );
     }
 
     #[test]

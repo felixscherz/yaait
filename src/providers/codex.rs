@@ -152,13 +152,13 @@ impl TrackerProvider for CodexProvider {
     fn descriptor(&self) -> ProviderDescriptor {
         let mut descriptor = ProviderDescriptor {
             id: "codex".parse().expect("static provider ID"), name: "Codex".into(),
-            description: "Subscription usage percentages and reset windows.".into(),
+            description: "5-hour and weekly subscription limits and reset times.".into(),
             setup: SetupSchema { fields: vec![
                 SetupField { key: "token".into(), label: "Subscription access token".into(), description: "OAuth access token, not an API key. Supply either this or a credential file.".into(), kind: SetupFieldKind::Secret, required: false, allowed_values: None },
                 SetupField { key: "credential_file".into(), label: "Credential file".into(), description: "Absolute path to this subscription's Codex auth.json. Read again on each fresh fetch; the upstream CLI manages token refresh.".into(), kind: SetupFieldKind::Path, required: false, allowed_values: None },
                 SetupField { key: "account_id".into(), label: "ChatGPT account ID".into(), description: "Account or workspace ID for a supplied token; read from credential files automatically.".into(), kind: SetupFieldKind::String, required: false, allowed_values: None },
             ] },
-            metrics: [("primary", "Primary window", MetricTier::Primary), ("secondary", "Secondary window", MetricTier::Primary), ("code-review", "Code review", MetricTier::Detail)].into_iter().map(|(id,label,tier)| MetricDescriptor { id: id.into(), label: label.into(), description: "Percentage of the subscription window used.".into(), kind: MetricKind::Quota, tier, unit: "percent".into() }).collect(),
+            metrics: [("primary", "5-hour limit", MetricTier::Primary), ("secondary", "Weekly limit", MetricTier::Primary), ("code-review", "Code review", MetricTier::Detail)].into_iter().map(|(id,label,tier)| MetricDescriptor { id: id.into(), label: label.into(), description: "Percentage of the subscription window used.".into(), kind: MetricKind::Quota, tier, unit: "percent".into() }).collect(),
         };
         descriptor.metrics.push(MetricDescriptor {
             id: "credits".into(),
@@ -274,13 +274,13 @@ fn parse_report(payload: Value) -> Result<UsageReport, TrackerError> {
     for (id, label, pointer, tier) in [
         (
             "primary",
-            "Primary window",
+            "5-hour limit",
             "/rate_limit/primary_window",
             MetricTier::Primary,
         ),
         (
             "secondary",
-            "Secondary window",
+            "Weekly limit",
             "/rate_limit/secondary_window",
             MetricTier::Primary,
         ),
@@ -408,13 +408,30 @@ mod tests {
         let report = parse_report(fixture()).unwrap();
         crate::validate_report(&report).unwrap();
         assert_eq!(report.metrics.len(), 4);
+        assert_eq!(report.metrics[0].id, "primary");
+        assert_eq!(report.metrics[0].label, "5-hour limit");
         assert_eq!(report.metrics[0].used, Some(25.0));
         assert_eq!(report.metrics[0].remaining, Some(75.0));
         assert_eq!(report.metrics[0].unit, "percent");
         assert!(report.metrics[0].resets_at.is_some());
+        assert_eq!(report.metrics[1].id, "secondary");
+        assert_eq!(report.metrics[1].label, "Weekly limit");
         assert_eq!(report.metrics[1].remaining, Some(30.0));
         assert_eq!(report.metrics[2].tier, MetricTier::Detail);
         assert_eq!(report.metrics[2].resets_at, None);
+    }
+    #[test]
+    fn descriptor_uses_the_same_limit_labels_as_reports() {
+        let descriptor = CodexProvider::default().descriptor();
+        let report = parse_report(fixture()).unwrap();
+        for metric in report.metrics.iter().take(2) {
+            let described = descriptor
+                .metrics
+                .iter()
+                .find(|item| item.id == metric.id)
+                .unwrap();
+            assert_eq!(described.label, metric.label);
+        }
     }
     #[test]
     fn credential_discovery_respects_each_cli_directory() {
@@ -717,6 +734,10 @@ mod tests {
             assert_eq!(json["data"]["trackers"][1]["id"], "work");
             assert_eq!(json["data"]["trackers"][0]["metrics"][0]["remaining"], 75.0);
             let metrics = json["data"]["trackers"][0]["metrics"].as_array().unwrap();
+            assert_eq!(metrics[0]["id"], "primary");
+            assert_eq!(metrics[0]["label"], "5-hour limit");
+            assert_eq!(metrics[1]["id"], "secondary");
+            assert_eq!(metrics[1]["label"], "Weekly limit");
             let credit = metrics.iter().find(|m| m["id"] == "credits").unwrap();
             assert_eq!(credit["value"], 12.5);
             assert_eq!(credit["unit"], "credit");
@@ -724,6 +745,8 @@ mod tests {
             assert!(human.stdout.contains("personal:"));
             assert!(human.stdout.contains("work:"));
             assert!(human.stdout.contains("25 of 100"));
+            assert!(human.stdout.contains("5-hour limit:"));
+            assert!(human.stdout.contains("Weekly limit:"));
             assert_eq!(human.stdout.contains("Code review"), details);
             assert!(human.stderr.is_empty());
             assert!(human.stdout.contains("Credit balance"));

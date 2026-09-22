@@ -1,7 +1,7 @@
 # Codex
 
-Codex reports subscription usage percentages and reset windows. Add a tracker
-for each subscription:
+Codex reports 5-hour and weekly subscription limits with reset times. Add a
+tracker for each subscription:
 
 ```sh
 yaait add --provider codex codex-personal
@@ -37,4 +37,6 @@ add `account_id` if you need to select a workspace.
 Usage is measured in percentage points of each independent window, with a
 limit of 100. Do not add windows together. Missing windows stay unknown. The
 summary also includes the credit balance when available. Credits have no
-assumed currency. Detailed output includes code review usage.
+assumed currency. Detailed output includes code review usage. JSON keeps the
+metric IDs `primary` and `secondary` for compatibility; their labels are
+`5-hour limit` and `Weekly limit`.
