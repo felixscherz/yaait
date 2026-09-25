@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-09-25
+
+### Added
+
+- Add DeepSeek balance provider (#3)
+- Add OpenRouter key usage provider (#4)
+- Add Codex subscription provider (#5)
+- Add Claude Code subscription provider (#6)
+
+### Documentation
+
+- Update README.md
+- Publish provider guides with GitHub Pages
+- Update guidance on releasing a new version
+
+### Fixed
+
+- Better error message when onboarding provider without giving an id
+- Display percent instead of percents
+
 ## [0.3.0] - 2026-09-17
 
 ### Added
@@ -11,6 +31,11 @@ All notable changes to this project will be documented in this file.
 - Allow explicitly configured HTTP LiteLLM origins
 - Show credential validation progress and seed usage caches
 - Support self-update
+
+### Miscellaneous
+
+- Squash into help
+- Release v0.3.0
 
 ## [0.2.5] - 2026-09-16
 
