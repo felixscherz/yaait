@@ -33,6 +33,37 @@ Before submitting a change, agents and contributors must run `cargo test` and
 submitted. If a hook modifies a file, review the change and rerun the hooks
 until they pass.
 
+## Releasing
+
+1. Decide on the new version, `vX.X.X`.
+2. Update the `version` in `Cargo.toml` to `X.X.X` and regenerate `Cargo.lock`:
+
+   ```sh
+   cargo generate-lockfile
+   ```
+
+3. Generate the release notes:
+
+   ```sh
+   git-cliff --tag vX.X.X > CHANGELOG.md
+   ```
+
+4. Review the changes and run the development checks above. Then commit the
+   version bump and release notes:
+
+   ```sh
+   git add Cargo.toml Cargo.lock CHANGELOG.md
+   git commit -m "chore: release vX.X.X"
+   ```
+
+5. Tag that commit and push both the commit and tag:
+
+   ```sh
+   git tag vX.X.X
+   git push origin HEAD
+   git push origin vX.X.X
+   ```
+
 ## Documentation
 
 Edit the Markdown files in `docs/` and update `mkdocs.yml` when adding a page.
