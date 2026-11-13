@@ -15,6 +15,9 @@ printf '%s' '{"base_url":"https://ai.example.com","token":"…","window":"30d"}'
 ```
 
 The reporting window can be `7d`, `30d`, or `90d`; it defaults to `30d`.
+The default view shows the key budget, or the user budget when the key has
+none. Without either budget, it shows spend since the start of the calendar
+month instead. Detailed counters cover the reporting window.
 URLs without a scheme use HTTPS. Include `http://` for a local plaintext
 proxy. The virtual key must be able to read key information, user information,
 and aggregated spend. Some deployments require the `get_spend_routes`

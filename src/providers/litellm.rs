@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Local, Utc};
+use chrono::{DateTime, Datelike, Duration, Local, Utc};
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -60,9 +60,8 @@ impl LiteLlmProvider {
         base_url: &str,
         token: &str,
         user_id: Option<&str>,
-        window: ReportingWindow,
+        range: DateRange,
     ) -> Result<ActivityMetadata, TrackerError> {
-        let range = DateRange::for_window(window);
         let mut query = vec![
             ("start_date", range.start_date),
             ("end_date", range.end_date),
@@ -130,6 +129,49 @@ impl LiteLlmProvider {
                 "LiteLLM returned invalid user information",
             )
         })
+    }
+
+    async fn fetch_report(
+        &self,
+        http: &reqwest::Client,
+        base_url: &str,
+        token: &str,
+        fallback_user_id: Option<&str>,
+        window: ReportingWindow,
+    ) -> Result<(KeyInfo, UsageReport), TrackerError> {
+        let key_info = self.fetch_key_info(http, base_url, token).await?;
+        let user_id = key_info.user_id.as_deref().or(fallback_user_id);
+        let activity = self
+            .fetch_activity(
+                http,
+                base_url,
+                token,
+                user_id,
+                DateRange::for_window(window),
+            )
+            .await?;
+        let user_info = if key_info.has_budget() {
+            None
+        } else {
+            Some(self.fetch_user_info(http, base_url, token, user_id).await?)
+        };
+        let has_budget =
+            key_info.has_budget() || user_info.as_ref().is_some_and(UserInfo::has_budget);
+        let month_to_date_spend = if has_budget {
+            None
+        } else {
+            self.fetch_activity(http, base_url, token, user_id, DateRange::month_to_date())
+                .await?
+                .total_spend
+        };
+        let report = into_report(
+            key_info.clone(),
+            user_info,
+            activity,
+            month_to_date_spend,
+            window,
+        );
+        Ok((key_info, report))
     }
 
     fn endpoint(&self, base_url: &str, path: &str) -> String {
@@ -210,25 +252,9 @@ impl TrackerProvider for LiteLlmProvider {
                 .unwrap_or(DEFAULT_WINDOW),
         )?;
 
-        let key_info = self.fetch_key_info(&http, &base_url, &token).await?;
-        let activity = self
-            .fetch_activity(
-                &http,
-                &base_url,
-                &token,
-                key_info.user_id.as_deref(),
-                window,
-            )
+        let (key_info, report) = self
+            .fetch_report(&http, &base_url, &token, None, window)
             .await?;
-        let user_info = if key_info.has_budget() {
-            None
-        } else {
-            Some(
-                self.fetch_user_info(&http, &base_url, &token, key_info.user_id.as_deref())
-                    .await?,
-            )
-        };
-        let report = into_report(key_info.clone(), user_info, activity, window);
 
         let mut public_settings = Map::new();
         public_settings.insert(BASE_URL.into(), Value::String(base_url));
@@ -263,23 +289,10 @@ impl TrackerProvider for LiteLlmProvider {
         let token = ctx.credentials.get(TOKEN).ok_or_else(|| {
             TrackerError::new("authentication_failed", "tracker credential is missing")
         })?;
-        let key_info = self.fetch_key_info(&http, base_url, token.expose()).await?;
-        let user_id = key_info
-            .user_id
-            .as_deref()
-            .or_else(|| ctx.tracker.settings.get(USER_ID).and_then(Value::as_str));
-        let activity = self
-            .fetch_activity(&http, base_url, token.expose(), user_id, window)
+        let fallback_user_id = ctx.tracker.settings.get(USER_ID).and_then(Value::as_str);
+        let (_, report) = self
+            .fetch_report(&http, base_url, token.expose(), fallback_user_id, window)
             .await?;
-        let user_info = if key_info.has_budget() {
-            None
-        } else {
-            Some(
-                self.fetch_user_info(&http, base_url, token.expose(), user_id)
-                    .await?,
-            )
-        };
-        let report = into_report(key_info, user_info, activity, window);
         cache.store(&report);
         Ok(report)
     }
@@ -327,6 +340,7 @@ fn metric_descriptors() -> Vec<MetricDescriptor> {
             "request",
         ),
         ("budget", "Budget", MetricKind::Quota, "usd"),
+        ("month-spend", "Spend this month", MetricKind::Counter, "usd"),
     ]
     .into_iter()
     .map(|(id, label, kind, unit)| MetricDescriptor {
@@ -334,13 +348,16 @@ fn metric_descriptors() -> Vec<MetricDescriptor> {
         label: label.into(),
         description: match id {
             "budget" => "Current spend against the applicable key or user budget.".into(),
+            "month-spend" => {
+                "Spend since the start of the calendar month, reported when no key or user budget applies.".into()
+            }
             _ => format!(
                 "Cumulative {label_lower} during the configured reporting window.",
                 label_lower = label.to_lowercase()
             ),
         },
         kind,
-        tier: if id == "budget" {
+        tier: if matches!(id, "budget" | "month-spend") {
             MetricTier::Primary
         } else {
             MetricTier::Detail
@@ -481,7 +498,20 @@ impl DateRange {
     fn for_window(window: ReportingWindow) -> Self {
         let now = Local::now();
         let end = now.date_naive();
-        let start = end - Duration::days(window.days() - 1);
+        Self::local(now, end - Duration::days(window.days() - 1))
+    }
+
+    fn month_to_date() -> Self {
+        let now = Local::now();
+        let start = now
+            .date_naive()
+            .with_day(1)
+            .expect("every month has a first day");
+        Self::local(now, start)
+    }
+
+    fn local(now: DateTime<Local>, start: chrono::NaiveDate) -> Self {
+        let end = now.date_naive();
         Self {
             start_date: start.format("%Y-%m-%d").to_string(),
             end_date: end.format("%Y-%m-%d").to_string(),
@@ -519,6 +549,12 @@ struct UserInfo {
     max_budget: Option<f64>,
     budget_duration: Option<String>,
     budget_reset_at: Option<String>,
+}
+
+impl UserInfo {
+    fn has_budget(&self) -> bool {
+        self.max_budget.is_some_and(|limit| limit > 0.0)
+    }
 }
 
 #[derive(Deserialize)]
@@ -561,6 +597,7 @@ fn into_report(
     key_info: KeyInfo,
     user_info: Option<UserInfo>,
     activity: ActivityMetadata,
+    month_to_date_spend: Option<f64>,
     window: ReportingWindow,
 ) -> UsageReport {
     let mut metrics = Vec::new();
@@ -666,6 +703,11 @@ fn into_report(
             period: period.map(ToOwned::to_owned),
             resets_at: resets_at.and_then(parse_date_time),
             attributes,
+        });
+    } else if let Some(spend) = month_to_date_spend {
+        metrics.push(UsageMetric {
+            tier: MetricTier::Primary,
+            ..counter_metric("month-spend", "Spend this month", "usd", spend, "month")
         });
     }
     let identity = identity(&key_info);
@@ -1077,6 +1119,89 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reports_month_to_date_spend_as_primary_when_no_budget_applies() {
+        let server = MockServer::start_async().await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET).path("/key/info");
+                then.status(200).json_body(key_info_without_budget_body());
+            })
+            .await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET).path("/v2/user/info");
+                then.status(200).json_body(serde_json::json!({
+                    "user_id": "user-7",
+                    "spend": 12.0,
+                    "max_budget": null
+                }));
+            })
+            .await;
+        let month_start = Local::now().date_naive().with_day(1).unwrap();
+        let month_to_date = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/user/daily/activity/aggregated")
+                    .query_param("start_date", month_start.format("%Y-%m-%d").to_string())
+                    .query_param(USER_ID, "user-7");
+                then.status(200).json_body(serde_json::json!({
+                    "metadata": {"total_spend": 1.25}
+                }));
+            })
+            .await;
+        server
+            .mock_async(|when, then| {
+                when.method(GET).path("/user/daily/activity/aggregated");
+                then.status(200).json_body(activity_body());
+            })
+            .await;
+        let provider = LiteLlmProvider::test_base_url(server.base_url());
+        let temp = tempfile::tempdir().unwrap();
+        let context = tracker_context(temp.path().join("cache"));
+
+        let report = provider
+            .collect(&context, CachePolicy::Refresh)
+            .await
+            .unwrap();
+
+        crate::validate_report(&report).unwrap();
+        assert!(month_to_date.calls_async().await >= 1);
+        assert!(report.metrics.iter().all(|metric| metric.id != "budget"));
+        let primary: Vec<_> = report
+            .metrics
+            .iter()
+            .filter(|metric| metric.tier == MetricTier::Primary)
+            .collect();
+        assert_eq!(primary.len(), 1);
+        assert_eq!(primary[0].id, "month-spend");
+        assert_eq!(primary[0].kind, MetricKind::Counter);
+        assert_eq!(primary[0].unit, "usd");
+        assert_eq!(primary[0].value, Some(1.25));
+        assert_eq!(primary[0].period.as_deref(), Some("month"));
+    }
+
+    #[tokio::test]
+    async fn omits_month_to_date_spend_when_a_budget_applies() {
+        let server = MockServer::start_async().await;
+        mock_user_budget_success(&server).await;
+        let provider = LiteLlmProvider::test_base_url(server.base_url());
+        let temp = tempfile::tempdir().unwrap();
+        let context = tracker_context(temp.path().join("cache"));
+
+        let report = provider
+            .collect(&context, CachePolicy::Refresh)
+            .await
+            .unwrap();
+
+        assert!(
+            report
+                .metrics
+                .iter()
+                .all(|metric| metric.id != "month-spend")
+        );
+    }
+
+    #[tokio::test]
     async fn collect_reuses_a_fresh_cached_report_until_refresh() {
         let server = MockServer::start_async().await;
         let (key_info, activity) = mock_success(&server).await;
@@ -1115,7 +1240,7 @@ mod tests {
         }))
         .unwrap();
 
-        let report = into_report(key_info, None, activity, ReportingWindow::Seven);
+        let report = into_report(key_info, None, activity, None, ReportingWindow::Seven);
 
         assert_eq!(report.metrics.len(), 1);
         assert_eq!(report.metrics[0].period.as_deref(), Some("7d"));
