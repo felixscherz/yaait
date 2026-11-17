@@ -43,7 +43,7 @@ impl LiteLlmProvider {
             .map_err(classify_transport)?;
         let status = response.status();
         if !status.is_success() {
-            return Err(classify_status(status));
+            return Err(classify_response(response).await);
         }
         let payload: KeyInfoResponse = response.json().await.map_err(|_| {
             TrackerError::new(
@@ -82,7 +82,7 @@ impl LiteLlmProvider {
             .map_err(classify_transport)?;
         let status = response.status();
         if !status.is_success() {
-            return Err(classify_status(status));
+            return Err(classify_response(response).await);
         }
         let payload: ActivityResponse = response.json().await.map_err(|_| {
             TrackerError::new(
@@ -122,7 +122,7 @@ impl LiteLlmProvider {
         let response = request.send().await.map_err(classify_transport)?;
         let status = response.status();
         if !status.is_success() {
-            return Err(classify_status(status));
+            return Err(classify_response(response).await);
         }
         response.json().await.map_err(|_| {
             TrackerError::new(
@@ -263,23 +263,27 @@ impl TrackerProvider for LiteLlmProvider {
         let token = ctx.credentials.get(TOKEN).ok_or_else(|| {
             TrackerError::new("authentication_failed", "tracker credential is missing")
         })?;
-        let key_info = self.fetch_key_info(&http, base_url, token.expose()).await?;
-        let user_id = key_info
-            .user_id
-            .as_deref()
-            .or_else(|| ctx.tracker.settings.get(USER_ID).and_then(Value::as_str));
-        let activity = self
-            .fetch_activity(&http, base_url, token.expose(), user_id, window)
-            .await?;
-        let user_info = if key_info.has_budget() {
-            None
-        } else {
-            Some(
-                self.fetch_user_info(&http, base_url, token.expose(), user_id)
-                    .await?,
-            )
-        };
-        let report = into_report(key_info, user_info, activity, window);
+        let report = async {
+            let key_info = self.fetch_key_info(&http, base_url, token.expose()).await?;
+            let user_id = key_info
+                .user_id
+                .as_deref()
+                .or_else(|| ctx.tracker.settings.get(USER_ID).and_then(Value::as_str));
+            let activity = self
+                .fetch_activity(&http, base_url, token.expose(), user_id, window)
+                .await?;
+            let user_info = if key_info.has_budget() {
+                None
+            } else {
+                Some(
+                    self.fetch_user_info(&http, base_url, token.expose(), user_id)
+                        .await?,
+                )
+            };
+            Ok(into_report(key_info, user_info, activity, window))
+        }
+        .await
+        .or_else(report_budget_exceeded)?;
         cache.store(&report);
         Ok(report)
     }
@@ -395,6 +399,62 @@ fn classify_transport(error: reqwest::Error) -> TrackerError {
     } else {
         TrackerError::new("transport_error", "LiteLLM request failed")
     }
+}
+
+async fn classify_response(response: reqwest::Response) -> TrackerError {
+    let status = response.status();
+    let payload = response.json::<Value>().await.ok();
+    let error = payload.as_ref().and_then(|payload| payload.get("error"));
+    if error
+        .and_then(|error| error.get("type"))
+        .and_then(Value::as_str)
+        == Some("budget_exceeded")
+    {
+        let mut result = TrackerError::new("budget_exceeded", "LiteLLM budget has been exceeded")
+            .detail("http_status", u64::from(status.as_u16()));
+        // LiteLLM exposes these amounts in its BudgetExceededError message, not
+        // separate JSON fields. Never retain the message: it can contain secrets.
+        if let Some(message) = error
+            .and_then(|error| error.get("message"))
+            .and_then(Value::as_str)
+            && let Some((_, amounts)) = message.rsplit_once("Current cost: ")
+            && let Some((used, limit)) = amounts.split_once(", Max budget: ")
+            && let (Ok(used), Ok(limit)) = (used.trim().parse::<f64>(), limit.trim().parse::<f64>())
+            && used.is_finite()
+            && limit.is_finite()
+            && limit > 0.0
+            && used >= limit
+        {
+            result = result.detail("used", used).detail("limit", limit);
+        }
+        return result;
+    }
+    classify_status(status)
+}
+
+fn report_budget_exceeded(error: TrackerError) -> Result<UsageReport, TrackerError> {
+    if error.code != "budget_exceeded" {
+        return Err(error);
+    }
+    Ok(UsageReport {
+        observed_at: Utc::now(),
+        identity: None,
+        metrics: vec![UsageMetric {
+            id: "budget".into(),
+            label: "Budget".into(),
+            kind: MetricKind::Quota,
+            tier: MetricTier::Primary,
+            unit: "usd".into(),
+            used: error.details.get("used").and_then(Value::as_f64),
+            remaining: Some(0.0),
+            limit: error.details.get("limit").and_then(Value::as_f64),
+            value: None,
+            period: None,
+            resets_at: None,
+            attributes: Map::from_iter([("budget_exceeded".into(), Value::Bool(true))]),
+        }],
+        attributes: Map::new(),
+    })
 }
 
 fn classify_status(status: StatusCode) -> TrackerError {
@@ -1132,6 +1192,116 @@ mod tests {
             let error = classify_status(status);
             assert_eq!(error.code, code);
             assert!(!error.to_string().contains("secret"));
+        }
+    }
+
+    #[tokio::test]
+    async fn reports_exhausted_budget_when_any_usage_endpoint_is_blocked() {
+        for path in [
+            "/key/info",
+            "/user/daily/activity/aggregated",
+            "/v2/user/info",
+        ] {
+            let server = MockServer::start_async().await;
+            server.mock_async(|when, then| {
+                when.method(GET).path(path);
+                then.status(422).json_body(serde_json::json!({"error": {
+                    "type": "budget_exceeded",
+                    "message": "Budget has been exceeded! TeamMember=sk-user-secret:1000 Current cost: 40.0, Max budget: 40.0",
+                    "code": "422"
+                }}));
+            }).await;
+            if path != "/key/info" {
+                mock_key_info(&server, 200, key_info_without_budget_body()).await;
+            }
+            if path == "/v2/user/info" {
+                server
+                    .mock_async(|when, then| {
+                        when.method(GET).path("/user/daily/activity/aggregated");
+                        then.status(200).json_body(activity_body());
+                    })
+                    .await;
+            }
+            let temp = tempfile::tempdir().unwrap();
+            let context = tracker_context(temp.path().join("cache"));
+            let provider = LiteLlmProvider::test_base_url(server.base_url());
+            let report = provider
+                .collect(&context, CachePolicy::Refresh)
+                .await
+                .unwrap();
+            crate::validate_report(&report).unwrap();
+            assert_eq!(report.metrics.len(), 1);
+            let budget = &report.metrics[0];
+            assert_eq!(budget.id, "budget");
+            assert_eq!(budget.used, Some(40.0));
+            assert_eq!(budget.limit, Some(40.0));
+            assert_eq!(budget.remaining, Some(0.0));
+            assert_eq!(budget.resets_at, None);
+            assert_eq!(budget.period, None);
+            assert!(
+                !serde_json::to_string(&report)
+                    .unwrap()
+                    .contains("sk-user-secret")
+            );
+            let cached = provider
+                .collect(&context, CachePolicy::Cached)
+                .await
+                .unwrap();
+            assert_eq!(cached, report);
+        }
+    }
+
+    #[tokio::test]
+    async fn budget_exceeded_preserves_unknown_or_invalid_amounts() {
+        for message in [
+            "Budget has been exceeded!",
+            "Current cost: NaN, Max budget: 40.0",
+            "Current cost: 40.0, Max budget: 0.0",
+            "Current cost: 20.0, Max budget: 40.0",
+        ] {
+            let server = MockServer::start_async().await;
+            mock_key_info(
+                &server,
+                422,
+                serde_json::json!({"error": {
+                    "type": "budget_exceeded", "message": message
+                }}),
+            )
+            .await;
+            let temp = tempfile::tempdir().unwrap();
+            let report = LiteLlmProvider::test_base_url(server.base_url())
+                .collect(
+                    &tracker_context(temp.path().join("cache")),
+                    CachePolicy::Refresh,
+                )
+                .await
+                .unwrap();
+            crate::validate_report(&report).unwrap();
+            assert_eq!(report.metrics[0].remaining, Some(0.0));
+            assert_eq!(report.metrics[0].used, None);
+            assert_eq!(report.metrics[0].limit, None);
+        }
+    }
+
+    #[tokio::test]
+    async fn unrelated_422_responses_are_still_errors() {
+        for body in [
+            serde_json::json!({"error": {"type": "validation_error", "message": "budget_exceeded sk-user-secret"}}),
+            serde_json::json!({"detail": [{"msg": "invalid query"}]}),
+        ] {
+            let server = MockServer::start_async().await;
+            mock_key_info(&server, 422, body).await;
+            let temp = tempfile::tempdir().unwrap();
+            let error = LiteLlmProvider::test_base_url(server.base_url())
+                .collect(
+                    &tracker_context(temp.path().join("cache")),
+                    CachePolicy::Refresh,
+                )
+                .await
+                .unwrap_err();
+            assert_eq!(error.code, "invalid_provider_response");
+            assert_eq!(error.details["http_status"], 422);
+            assert!(!error.to_string().contains("sk-user-secret"));
         }
     }
 }
