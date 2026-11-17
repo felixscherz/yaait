@@ -21,6 +21,10 @@ for detailed reports, JSON output, and automated setup.
 Percentage quotas in the human report use the singular unit, such as
 `used: 3 of 100 percent (3.0%)`.
 
+LiteLLM's explicit `budget_exceeded` responses are reported as zero remaining
+budget, even when the proxy blocks usage endpoints. Amounts are included when
+available; reset times and detailed counters remain unknown.
+
 ## Supported providers
 
 | Provider | Reports | Setup guide |

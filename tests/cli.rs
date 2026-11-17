@@ -371,3 +371,117 @@ fn openrouter_setup_is_discoverable() {
             .contains("openrouter:")
     );
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn litellm_budget_exceeded_is_successful_in_human_and_json_usage() {
+    use chrono::Utc;
+    use httpmock::{Method::GET, MockServer};
+    use yaait::{AppPaths, FileRegistry, Secret, TrackerManifest};
+
+    let server = MockServer::start();
+    for (token, spend, limit) in [("sk-exhausted", 41.5, 40.0), ("sk-active", 2.0, 10.0)] {
+        server.mock(|when, then| {
+            when.method(GET).path("/key/info")
+                .header("authorization", format!("Bearer {token}"));
+            if token == "sk-exhausted" {
+                then.status(422).json_body(serde_json::json!({"error": {
+                    "type": "budget_exceeded",
+                    "message": format!("Budget has been exceeded! TeamMember={token} Current cost: {spend}, Max budget: {limit}")
+                }}));
+            } else {
+                then.status(200).json_body(serde_json::json!({"info": {
+                    "spend": spend, "max_budget": limit
+                }}));
+            }
+        });
+    }
+    server.mock(|when, then| {
+        when.method(GET)
+            .path("/user/daily/activity/aggregated")
+            .header("authorization", "Bearer sk-active");
+        then.status(200)
+            .json_body(serde_json::json!({"metadata": {"total_spend": 2.0}}));
+    });
+
+    let home = tempfile::tempdir().unwrap();
+    let data = home.path().join("data");
+    let cache = home.path().join("cache");
+    let registry = FileRegistry::new(AppPaths {
+        data_root: data.join("yaait"),
+        cache_root: cache.join("yaait"),
+    });
+    for (id, token) in [
+        ("litellm-exhausted", "sk-exhausted"),
+        ("litellm-active", "sk-active"),
+    ] {
+        let tracker = TrackerManifest {
+            schema_version: 1,
+            id: id.parse().unwrap(),
+            provider: "litellm".parse().unwrap(),
+            name: id.into(),
+            description: None,
+            enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            settings: serde_json::json!({"base_url": server.base_url(), "window": "30d"})
+                .as_object()
+                .unwrap()
+                .clone(),
+            extensions: Default::default(),
+        };
+        registry
+            .add(&tracker, &[("token".into(), Secret::new(token))].into())
+            .unwrap();
+    }
+    for json in [false, true] {
+        for details in [false, true] {
+            let mut command = yaait();
+            command
+                .env("HOME", home.path())
+                .env("XDG_DATA_HOME", &data)
+                .env("XDG_CACHE_HOME", &cache);
+            if json {
+                command.args(["--format", "json"]);
+            }
+            command.args(["usage", "--refresh"]);
+            if details {
+                command.arg("--details");
+            }
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(output.stderr.is_empty());
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            assert!(!stdout.contains("sk-exhausted"));
+            assert!(!stdout.contains("sk-active"));
+            if json {
+                let response: Value = serde_json::from_str(&stdout).unwrap();
+                assert_eq!(response["ok"], true);
+                assert_eq!(response["partial"], false);
+                assert_eq!(response["errors"], serde_json::json!([]));
+                let trackers = response["data"]["trackers"].as_array().unwrap();
+                assert_eq!(trackers.len(), 2);
+                let exhausted = trackers
+                    .iter()
+                    .find(|t| t["id"] == "litellm-exhausted")
+                    .unwrap();
+                let budget = &exhausted["metrics"][0];
+                assert_eq!(budget["remaining"], 0.0);
+                assert_eq!(budget["used"], 41.5);
+                assert_eq!(budget["limit"], 40.0);
+                assert!(budget.get("resets_at").is_none());
+            } else {
+                assert!(stdout.contains("litellm-active:"));
+                assert!(stdout.contains("litellm-exhausted:"));
+                assert!(
+                    stdout.contains("used: $41.50 of $40.00 (100.0%)"),
+                    "{stdout}"
+                );
+            }
+        }
+    }
+}
