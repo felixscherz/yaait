@@ -29,6 +29,7 @@ Percentage quotas in the human report use the singular unit, such as
 | Codex | 5-hour and weekly limits, reset times, and credits | [Codex](docs/providers/codex.md) |
 | DeepSeek | API account balances in USD and CNY | [DeepSeek](docs/providers/deepseek.md) |
 | GitHub Copilot | Request quota and reset time | [GitHub Copilot](docs/providers/github-copilot.md) |
+| Kimi (Moonshot AI) | API account balance, vouchers, and cash in USD or CNY | [Kimi](docs/providers/kimi.md) |
 | LiteLLM | Spend, tokens, requests, and key or user budget | [LiteLLM](docs/providers/litellm.md) |
 | OpenRouter | API key spend and remaining key budget in USD | [OpenRouter](docs/providers/openrouter.md) |
 

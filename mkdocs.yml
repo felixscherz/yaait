@@ -13,6 +13,7 @@ nav:
       - Codex: providers/codex.md
       - DeepSeek: providers/deepseek.md
       - GitHub Copilot: providers/github-copilot.md
+      - Kimi: providers/kimi.md
       - LiteLLM: providers/litellm.md
       - OpenRouter: providers/openrouter.md
   - Updating: updating.md

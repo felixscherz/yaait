@@ -32,10 +32,45 @@ fn provider_discovery_uses_the_versioned_json_envelope() {
             "codex",
             "deepseek",
             "github-copilot",
+            "kimi",
             "litellm",
             "openrouter"
         ]
     );
+}
+
+#[test]
+fn kimi_setup_is_discoverable_in_human_and_json_output() {
+    let output = yaait()
+        .args(["--format", "json", "providers", "describe", "kimi"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stderr.is_empty());
+    let response: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(response["schema_version"], 2);
+    let provider = &response["data"]["provider"];
+    assert_eq!(provider["id"], "kimi");
+    let fields = provider["setup"]["fields"].as_array().unwrap();
+    assert_eq!(fields[0]["key"], "token");
+    assert_eq!(fields[0]["kind"], "secret");
+    assert_eq!(fields[0]["required"], true);
+    assert_eq!(fields[1]["key"], "region");
+    assert_eq!(
+        fields[1]["allowed_values"],
+        serde_json::json!(["international", "china"])
+    );
+    assert_eq!(provider["metrics"].as_array().unwrap().len(), 6);
+    let output = yaait()
+        .args(["providers", "describe", "kimi"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("Kimi"));
+    assert!(stdout.contains("token"));
+    assert!(stdout.contains("region"));
+    assert!(stdout.contains("Kimi Code"));
 }
 
 #[test]
@@ -59,6 +94,7 @@ fn add_without_tracker_id_names_the_missing_argument_for_every_provider() {
         "codex",
         "deepseek",
         "github-copilot",
+        "kimi",
         "litellm",
         "openrouter",
     ] {
