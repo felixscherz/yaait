@@ -15,7 +15,7 @@ use yaait::{
     application::{RemovedData, ServiceResult},
     presentation::{Envelope, human},
     providers::{
-        ClaudeCodeProvider, CodexProvider, DeepSeekProvider, GitHubCopilotProvider,
+        ClaudeCodeProvider, CodexProvider, DeepSeekProvider, GitHubCopilotProvider, KimiProvider,
         LiteLlmProvider, OpenRouterProvider,
     },
 };
@@ -223,6 +223,7 @@ async fn run(cli: Cli) -> Result<Envelope, TrackerError> {
     app.register_provider(Arc::new(GitHubCopilotProvider::default()));
     app.register_provider(Arc::new(LiteLlmProvider::default()));
     app.register_provider(Arc::new(DeepSeekProvider::default()));
+    app.register_provider(Arc::new(KimiProvider::default()));
     app.register_provider(Arc::new(OpenRouterProvider::default()));
     app.register_provider(Arc::new(CodexProvider::default()));
     app.register_provider(Arc::new(ClaudeCodeProvider::default()));

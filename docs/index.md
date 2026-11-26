@@ -14,5 +14,6 @@ Start with [installation](install.md), then [add a tracker and check usage](usag
 | Codex | 5-hour and weekly limits, reset times, and credits | [Codex](providers/codex.md) |
 | DeepSeek | API account balances in USD and CNY | [DeepSeek](providers/deepseek.md) |
 | GitHub Copilot | Request quota and reset time | [GitHub Copilot](providers/github-copilot.md) |
+| Kimi (Moonshot AI) | API account balance, vouchers, and cash in USD or CNY | [Kimi](providers/kimi.md) |
 | LiteLLM | Spend, tokens, requests, and key or user budget | [LiteLLM](providers/litellm.md) |
 | OpenRouter | API key spend and remaining key budget in USD | [OpenRouter](providers/openrouter.md) |
