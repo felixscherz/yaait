@@ -485,3 +485,116 @@ fn litellm_budget_exceeded_is_successful_in_human_and_json_usage() {
         }
     }
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn litellm_without_a_budget_shows_spend_in_human_and_json_usage() {
+    use chrono::Utc;
+    use httpmock::{Method::GET, MockServer};
+    use yaait::{AppPaths, FileRegistry, Secret, TrackerManifest};
+
+    let server = MockServer::start();
+    let home = tempfile::tempdir().unwrap();
+    let data = home.path().join("data");
+    let cache = home.path().join("cache");
+    let registry = FileRegistry::new(AppPaths {
+        data_root: data.join("yaait"),
+        cache_root: cache.join("yaait"),
+    });
+    for (id, token, spend) in [
+        ("litellm-personal", "sk-personal", 2.0),
+        ("litellm-work", "sk-work", 3.5),
+    ] {
+        server.mock(|when, then| {
+            when.method(GET)
+                .path("/key/info")
+                .header("authorization", format!("Bearer {token}"));
+            then.status(200)
+                .json_body(serde_json::json!({"info": {"max_budget": null}}));
+        });
+        server.mock(|when, then| {
+            when.method(GET)
+                .path("/v2/user/info")
+                .header("authorization", format!("Bearer {token}"));
+            then.status(200)
+                .json_body(serde_json::json!({"max_budget": null}));
+        });
+        server.mock(|when, then| {
+            when.method(GET)
+                .path("/user/daily/activity/aggregated")
+                .header("authorization", format!("Bearer {token}"));
+            then.status(200).json_body(serde_json::json!({"metadata": {
+                "total_spend": spend, "total_tokens": 100.0
+            }}));
+        });
+        let tracker = TrackerManifest {
+            schema_version: 1,
+            id: id.parse().unwrap(),
+            provider: "litellm".parse().unwrap(),
+            name: id.into(),
+            description: None,
+            enabled: true,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            settings: serde_json::json!({"base_url": server.base_url(), "window": "30d"})
+                .as_object()
+                .unwrap()
+                .clone(),
+            extensions: Default::default(),
+        };
+        registry
+            .add(&tracker, &[("token".into(), Secret::new(token))].into())
+            .unwrap();
+    }
+    for json in [false, true] {
+        for details in [false, true] {
+            let mut command = yaait();
+            command
+                .env("HOME", home.path())
+                .env("XDG_DATA_HOME", &data)
+                .env("XDG_CACHE_HOME", &cache);
+            if json {
+                command.args(["--format", "json"]);
+            }
+            command.args(["usage", "--refresh"]);
+            if details {
+                command.arg("--details");
+            }
+            let output = command.output().unwrap();
+            assert!(output.status.success());
+            assert!(output.stderr.is_empty());
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            assert!(!stdout.contains("sk-personal"));
+            assert!(!stdout.contains("sk-work"));
+            if json {
+                let response: Value = serde_json::from_str(&stdout).unwrap();
+                assert_eq!(response["schema_version"], 2);
+                assert_eq!(response["ok"], true);
+                let trackers = response["data"]["trackers"].as_array().unwrap();
+                assert_eq!(trackers.len(), 2);
+                for (id, value) in [("litellm-personal", 2.0), ("litellm-work", 3.5)] {
+                    let tracker = trackers.iter().find(|t| t["id"] == id).unwrap();
+                    let metrics = tracker["metrics"].as_array().unwrap();
+                    assert_eq!(metrics.len(), if details { 2 } else { 1 });
+                    let spend = &metrics[0];
+                    assert_eq!(spend["id"], "spend");
+                    assert_eq!(spend["tier"], "primary");
+                    assert_eq!(spend["value"], value);
+                    assert_eq!(spend["period"], "30d");
+                    assert!(spend.get("limit").is_none());
+                    assert!(spend.get("remaining").is_none());
+                }
+            } else {
+                assert!(
+                    stdout.contains("litellm-personal:\n    Spend: $2.00"),
+                    "{stdout}"
+                );
+                assert!(
+                    stdout.contains("litellm-work:\n    Spend: $3.50"),
+                    "{stdout}"
+                );
+                assert_eq!(stdout.contains("Total tokens:"), details);
+            }
+        }
+    }
+}

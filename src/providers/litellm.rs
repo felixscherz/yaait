@@ -727,6 +727,8 @@ fn into_report(
             resets_at: resets_at.and_then(parse_date_time),
             attributes,
         });
+    } else if let Some(spend) = metrics.iter_mut().find(|metric| metric.id == "spend") {
+        spend.tier = MetricTier::Primary;
     }
     let identity = identity(&key_info);
     let mut attributes = Map::new();
@@ -1089,6 +1091,7 @@ mod tests {
         assert_eq!(report.metrics.len(), 10);
         assert_eq!(report.metrics[0].id, "spend");
         assert_eq!(report.metrics[0].value, Some(3.5));
+        assert_eq!(report.metrics[0].tier, MetricTier::Detail);
         let budget = report
             .metrics
             .iter()
@@ -1125,6 +1128,7 @@ mod tests {
             .find(|metric| metric.id == "budget")
             .unwrap();
         assert_eq!(budget.label, "User budget");
+        assert_eq!(report.metrics[0].tier, MetricTier::Detail);
         assert_eq!(budget.used, Some(3.78752364));
         assert_eq!(budget.remaining, Some(36.21247636));
         assert_eq!(budget.limit, Some(40.0));
@@ -1178,6 +1182,11 @@ mod tests {
         let report = into_report(key_info, None, activity, ReportingWindow::Seven);
 
         assert_eq!(report.metrics.len(), 1);
+        assert_eq!(report.metrics[0].id, "spend");
+        assert_eq!(report.metrics[0].tier, MetricTier::Primary);
+        assert_eq!(report.metrics[0].value, Some(2.0));
+        assert_eq!(report.metrics[0].limit, None);
+        assert_eq!(report.metrics[0].remaining, None);
         assert_eq!(report.metrics[0].period.as_deref(), Some("7d"));
     }
 

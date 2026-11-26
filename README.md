@@ -25,6 +25,10 @@ LiteLLM's explicit `budget_exceeded` responses are reported as zero remaining
 budget, even when the proxy blocks usage endpoints. Amounts are included when
 available; reset times and detailed counters remain unknown.
 
+When LiteLLM provides no recognized key or user budget, `yaait usage` shows
+reported spend for the configured reporting window instead. Token and request
+counts remain available with `--details`; remaining budget stays unknown.
+
 ## Supported providers
 
 | Provider | Reports | Setup guide |
